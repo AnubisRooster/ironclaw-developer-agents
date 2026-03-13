@@ -1,0 +1,20 @@
+name: jira_created_workflow
+trigger: jira.issue.created
+description: When a Jira issue is created — create a GitHub issue, start a Slack thread, and assign.
+enabled: true
+
+actions:
+  - tool: github.create_issue
+    description: Create a corresponding GitHub issue
+    args: {}
+
+  - tool: slack.send_message
+    description: Start a Slack thread for the new ticket
+    args:
+      channel: "#dev-team"
+    on_failure: continue
+
+  - tool: jira.update_ticket
+    description: Update the Jira ticket with GitHub link
+    args: {}
+    on_failure: continue

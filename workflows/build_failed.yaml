@@ -1,0 +1,18 @@
+name: build_failed_workflow
+trigger: jenkins.build.failed
+description: When a Jenkins build fails — fetch logs, summarize the failure, and notify Slack.
+enabled: true
+
+actions:
+  - tool: jenkins.fetch_build_logs
+    description: Fetch the failed build logs
+
+  - tool: agent.summarize
+    description: Summarize the failure using LLM
+    args: {}
+
+  - tool: slack.send_message
+    description: Post failure summary to Slack
+    args:
+      channel: "#build-alerts"
+    on_failure: continue
