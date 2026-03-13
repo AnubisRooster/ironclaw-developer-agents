@@ -1,7 +1,5 @@
 """Tests for events/types.py and events/bus.py."""
 
-import asyncio
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,8 +17,8 @@ class TestAgentEvent:
         assert event.event_type == "github.pull_request.opened"
         assert event.source == EventSource.GITHUB
         assert event.payload == {"pr": 123}
-        assert event.id  # auto-generated
-        assert event.timestamp  # auto-generated
+        assert event.id
+        assert event.timestamp
 
     def test_event_str(self):
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
@@ -58,8 +56,9 @@ class TestEventBus:
         bus.subscribe("test.event", handler)
 
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
-        with patch("events.bus.get_session") as mock_session:
-            mock_session.return_value = MagicMock()
+        with patch("events.bus.session_scope") as mock_scope:
+            mock_scope.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             await bus.publish(event)
 
         handler.assert_called_once_with(event)
@@ -70,8 +69,9 @@ class TestEventBus:
         bus.subscribe("other.event", handler)
 
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
-        with patch("events.bus.get_session") as mock_session:
-            mock_session.return_value = MagicMock()
+        with patch("events.bus.session_scope") as mock_scope:
+            mock_scope.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             await bus.publish(event)
 
         handler.assert_not_called()
@@ -82,8 +82,9 @@ class TestEventBus:
         bus.subscribe("github.*", handler)
 
         event = AgentEvent(event_type="github.pull_request.opened", source=EventSource.GITHUB)
-        with patch("events.bus.get_session") as mock_session:
-            mock_session.return_value = MagicMock()
+        with patch("events.bus.session_scope") as mock_scope:
+            mock_scope.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             await bus.publish(event)
 
         handler.assert_called_once()
@@ -94,8 +95,9 @@ class TestEventBus:
         bus.subscribe_all(handler)
 
         event = AgentEvent(event_type="anything", source=EventSource.SYSTEM)
-        with patch("events.bus.get_session") as mock_session:
-            mock_session.return_value = MagicMock()
+        with patch("events.bus.session_scope") as mock_scope:
+            mock_scope.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             await bus.publish(event)
 
         handler.assert_called_once_with(event)
@@ -106,16 +108,17 @@ class TestEventBus:
         bus.subscribe("test.event", handler)
 
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
-        with patch("events.bus.get_session") as mock_session:
-            mock_session.return_value = MagicMock()
-            await bus.publish(event)  # should not raise
+        with patch("events.bus.session_scope") as mock_scope:
+            mock_scope.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+            await bus.publish(event)
 
     @pytest.mark.asyncio
     async def test_persist_called(self, bus):
         event = AgentEvent(event_type="test.persist", source=EventSource.SYSTEM, payload={"key": "val"})
-        with patch("events.bus.get_session") as mock_session:
+        with patch("events.bus.session_scope") as mock_scope:
             session = MagicMock()
-            mock_session.return_value = session
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             await bus.publish(event)
             session.add.assert_called_once()
-            session.commit.assert_called_once()

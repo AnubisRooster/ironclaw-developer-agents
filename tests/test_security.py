@@ -18,17 +18,17 @@ from security.secrets import (
 class TestAppSecrets:
     def test_defaults(self, monkeypatch):
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        monkeypatch.delenv("OPENCLAW_PROVIDER", raising=False)
+        monkeypatch.delenv("IRONCLAW_URL", raising=False)
         monkeypatch.delenv("WEBHOOK_PORT", raising=False)
         secrets = AppSecrets()
-        assert secrets.openclaw_provider == "openrouter"
+        assert secrets.ironclaw_url == "http://localhost:9090"
         assert secrets.webhook_port == 8080
-        assert secrets.database_url == "sqlite:///data/agent.db"
+        assert secrets.database_url == "postgresql://claw:claw@localhost:5432/clawagent"
 
     def test_loads_from_env(self, env_secrets):
         secrets = get_secrets()
-        assert secrets.openclaw_provider == "openai"
-        assert secrets.openclaw_api_key == "sk-test-key-123"
+        assert secrets.ironclaw_url == "http://localhost:9090"
+        assert secrets.ironclaw_api_key == "test-ironclaw-key"
         assert secrets.slack_bot_token == "xoxb-test-token"
         assert secrets.github_token == "ghp_testtoken123"
         assert secrets.jira_url == "https://test.atlassian.net"

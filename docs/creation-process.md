@@ -91,7 +91,7 @@ The agent connects six developer systems — Slack, GitHub, Jira, Confluence, Je
 The system was decomposed into eight packages, each with a single responsibility:
 
 ```
-developer-agent/
+ironclaw-developer-agent/
 ├── agent/          → LLM reasoning, orchestration, planning, memory
 ├── integrations/   → One connector per external service
 ├── workflows/      → YAML-defined automation engine
@@ -569,7 +569,7 @@ The initial test run (122 tests collected) produced **7 failures and 4 errors**.
 ## 13. Final File Inventory
 
 ```
-developer-agent/
+ironclaw-developer-agent/
 ├── .env.example                    # Environment variable template
 ├── .gitignore                      # VCS exclusions
 ├── README.md                       # User-facing documentation
@@ -701,7 +701,7 @@ developer-agent/
 ### Local Development
 
 ```bash
-cd developer-agent
+cd ironclaw-developer-agent
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

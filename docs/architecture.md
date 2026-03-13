@@ -11,7 +11,12 @@ graph TB
         CONFLUENCE["Confluence"]
         JENKINS["Jenkins"]
         GMAIL["Gmail"]
-        LLM_API["LLM Provider<br/>(OpenRouter / OpenAI / Ollama)"]
+    end
+
+    subgraph IronClaw Runtime
+        IC["IronClaw<br/>(Rust OpenClaw)"]
+        LLM_API["LLM Provider"]
+        IC -->|reasoning| LLM_API
     end
 
     subgraph Claw Agent
@@ -22,10 +27,13 @@ graph TB
 
         subgraph Agent Core
             ORCH["Orchestrator<br/><i>agent/orchestrator.py</i>"]
+            IC_CLIENT["IronClaw Client<br/><i>agent/ironclaw_client.py</i>"]
             PLANNER["Planner<br/><i>agent/planner.py</i>"]
             MEMORY["Conversation Memory<br/><i>agent/memory.py</i>"]
-            LLM_CLIENT["LLM Client<br/><i>agent/orchestrator.py</i>"]
-            TOOL_REG["Tool Registry<br/><i>agent/orchestrator.py</i>"]
+        end
+
+        subgraph Tool Layer
+            TOOL_REG["Tool Schema Registry<br/><i>tools/registry.py</i>"]
         end
 
         subgraph Event System
@@ -50,7 +58,7 @@ graph TB
 
         subgraph Infrastructure
             SECRETS["Secure Credentials<br/><i>security/secrets.py</i>"]
-            DB["SQLite Database<br/><i>database/models.py</i>"]
+            DB["PostgreSQL<br/><i>database/postgres.py</i>"]
         end
     end
 
@@ -65,9 +73,9 @@ graph TB
     CLI --> ORCH
     ORCH --> MEMORY
     ORCH --> PLANNER
-    ORCH --> LLM_CLIENT
+    ORCH --> IC_CLIENT
     ORCH --> TOOL_REG
-    LLM_CLIENT -->|API calls| LLM_API
+    IC_CLIENT -->|HTTP/JSON| IC
 
     %% Webhook to Event Bus
     WEBHOOK --> BUS
@@ -98,30 +106,35 @@ graph TB
     SECRETS -.->|credentials| I_CONF
     SECRETS -.->|credentials| I_JENKINS
     SECRETS -.->|credentials| I_GMAIL
-    SECRETS -.->|api key| LLM_CLIENT
+    SECRETS -.->|api key| IC_CLIENT
     BUS -->|persist events| DB
     ENGINE -->|persist runs| DB
-    ORCH -->|persist tool outputs| DB
+    ORCH -->|persist tool results| DB
+    MEMORY -.->|persist memory| DB
 
     %% Styling
     classDef external fill:#e8f4fd,stroke:#2196F3,stroke-width:2px
+    classDef ironclaw fill:#fff9c4,stroke:#FFC107,stroke-width:2px
     classDef entry fill:#fff3e0,stroke:#FF9800,stroke-width:2px
     classDef core fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+    classDef tool fill:#e3f2fd,stroke:#1976D2,stroke-width:2px
     classDef event fill:#f3e5f5,stroke:#9C27B0,stroke-width:2px
     classDef workflow fill:#fce4ec,stroke:#E91E63,stroke-width:2px
     classDef connector fill:#e0f2f1,stroke:#009688,stroke-width:2px
     classDef infra fill:#f5f5f5,stroke:#607D8B,stroke-width:2px
 
-    class SLACK,GITHUB,JIRA,CONFLUENCE,JENKINS,GMAIL,LLM_API external
+    class SLACK,GITHUB,JIRA,CONFLUENCE,JENKINS,GMAIL external
+    class IC,LLM_API ironclaw
     class CLI,WEBHOOK entry
-    class ORCH,PLANNER,MEMORY,LLM_CLIENT,TOOL_REG core
+    class ORCH,IC_CLIENT,PLANNER,MEMORY core
+    class TOOL_REG tool
     class BUS,TYPES event
     class ENGINE,LOADER,WF_YAML workflow
     class I_SLACK,I_GITHUB,I_JIRA,I_CONF,I_JENKINS,I_GMAIL connector
     class SECRETS,DB infra
 ```
 
-## Data Flow — Chat Request
+## Data Flow — Chat Request via IronClaw
 
 ```mermaid
 sequenceDiagram
@@ -129,35 +142,36 @@ sequenceDiagram
     participant CLI as CLI Chat
     participant Orch as Orchestrator
     participant Mem as Memory
-    participant LLM as LLM Client
-    participant API as LLM Provider
-    participant Reg as Tool Registry
+    participant IC as IronClaw Client
+    participant Runtime as IronClaw Runtime
+    participant Reg as Tool Schema Registry
     participant Tool as Integration<br/>Connector
-    participant DB as SQLite
+    participant DB as PostgreSQL
 
     Dev->>CLI: "Summarize PR 456 in org/repo"
     CLI->>Orch: handle_message(user_input)
     Orch->>Mem: add_message("user", input)
+    Orch->>Reg: get_all_tools()
+    Reg-->>Orch: [tool schemas with JSON params]
     Orch->>Mem: to_llm_messages()
     Mem-->>Orch: conversation history
 
-    Orch->>LLM: chat(system_prompt + history)
-    LLM->>API: POST /chat/completions
-    API-->>LLM: response with tool_call block
-    LLM-->>Orch: "```tool_call {tool_name: github.summarize_pull_request, ...}```"
+    Orch->>IC: chat(messages, tools)
+    IC->>Runtime: POST /v1/chat
+    Runtime-->>IC: {actions: [{tool: "github.summarize_pr", parameters: {...}}]}
+    IC-->>Orch: response with actions
 
-    Orch->>Orch: parse tool_call JSON
-    Orch->>Reg: get_tool("github.summarize_pull_request")
-    Reg-->>Orch: GitHubIntegration.summarize_pull_request
-    Orch->>Tool: summarize_pull_request(repo, pr_number)
-    Tool-->>Orch: {title, body, changed_files, ...}
-    Orch->>DB: store ToolOutput
+    Orch->>Reg: execute_tool("github.summarize_pr", params)
+    Reg->>Tool: summarize_pull_request(repo, pr_number)
+    Tool-->>Reg: {title, body, changed_files, ...}
+    Reg-->>Orch: tool result
+    Orch->>DB: store ToolResult
 
     Orch->>Mem: add_message("user", "[Tool result]")
-    Orch->>LLM: chat(updated history with tool result)
-    LLM->>API: POST /chat/completions
-    API-->>LLM: natural language summary
-    LLM-->>Orch: "PR 456 adds feature X..."
+    Orch->>IC: chat(updated messages, tools)
+    IC->>Runtime: POST /v1/chat
+    Runtime-->>IC: {content: "PR 456 adds feature X..."}
+    IC-->>Orch: text response
 
     Orch->>Mem: add_message("assistant", response)
     Orch-->>CLI: "PR 456 adds feature X..."
@@ -172,9 +186,10 @@ sequenceDiagram
     participant WH as Webhook Server<br/>POST /webhooks/github
     participant Sec as Signature<br/>Validation
     participant Bus as Event Bus
-    participant DB as SQLite
+    participant DB as PostgreSQL
     participant Eng as Workflow Engine
     participant YAML as pr_opened.yaml
+    participant Reg as Tool Schema Registry
     participant GH_C as GitHub Connector
     participant SL_C as Slack Connector
     participant JR_C as Jira Connector
@@ -191,16 +206,22 @@ sequenceDiagram
     Eng->>YAML: match trigger → pr_opened_workflow
 
     Note over Eng: Step 1/3
-    Eng->>GH_C: github.summarize_pull_request()
-    GH_C-->>Eng: {title, body, additions, deletions}
+    Eng->>Reg: execute_tool(github.summarize_pull_request)
+    Reg->>GH_C: summarize_pull_request()
+    GH_C-->>Reg: {title, body, additions, deletions}
+    Reg-->>Eng: result
 
     Note over Eng: Step 2/3
-    Eng->>SL_C: slack.send_message(#dev-notifications)
-    SL_C-->>Eng: {ok: true, ts: ...}
+    Eng->>Reg: execute_tool(slack.send_message)
+    Reg->>SL_C: send_message(#dev-notifications)
+    SL_C-->>Reg: {ok: true, ts: ...}
+    Reg-->>Eng: result
 
     Note over Eng: Step 3/3
-    Eng->>JR_C: jira.link_github_issue()
-    JR_C-->>Eng: {linked: true}
+    Eng->>Reg: execute_tool(jira.link_github_issue)
+    Reg->>JR_C: link_github_issue()
+    JR_C-->>Reg: {linked: true}
+    Reg-->>Eng: result
 
     Eng->>DB: persist WorkflowRun<br/>status: completed
 ```
@@ -213,10 +234,12 @@ sequenceDiagram
     participant WH as Webhook Server<br/>POST /webhooks/jenkins
     participant Bus as Event Bus
     participant Eng as Workflow Engine
+    participant Reg as Tool Schema Registry
     participant JK_C as Jenkins Connector
-    participant LLM as LLM Client
+    participant IC as IronClaw Client
+    participant Runtime as IronClaw Runtime
     participant SL_C as Slack Connector
-    participant DB as SQLite
+    participant DB as PostgreSQL
 
     JK->>WH: POST /webhooks/jenkins<br/>{build: {status: failure}}
     WH->>Bus: publish(jenkins.build.failed)
@@ -225,50 +248,24 @@ sequenceDiagram
     Bus->>Eng: dispatch → build_failed_workflow
 
     Note over Eng: Step 1/3
-    Eng->>JK_C: jenkins.fetch_build_logs()
-    JK_C-->>Eng: {log_tail: "ERROR at line 42..."}
+    Eng->>Reg: execute_tool(jenkins.fetch_build_logs)
+    Reg->>JK_C: fetch_build_logs()
+    JK_C-->>Reg: {log_tail: "ERROR at line 42..."}
+    Reg-->>Eng: result
 
     Note over Eng: Step 2/3
-    Eng->>LLM: agent.summarize(log content)
-    LLM-->>Eng: "Build failed due to null pointer in AuthService"
+    Eng->>Reg: execute_tool(agent.summarize)
+    Reg->>IC: summarize(log content)
+    IC->>Runtime: POST /v1/summarize
+    Runtime-->>IC: "Build failed due to null pointer in AuthService"
+    IC-->>Reg: summary
+    Reg-->>Eng: result
 
     Note over Eng: Step 3/3
-    Eng->>SL_C: slack.send_message(#build-alerts)
-    SL_C-->>Eng: {ok: true}
-
-    Eng->>DB: persist WorkflowRun
-```
-
-## Data Flow — Jira Issue Created Workflow
-
-```mermaid
-sequenceDiagram
-    participant JR as Jira
-    participant WH as Webhook Server<br/>POST /webhooks/jira
-    participant Bus as Event Bus
-    participant Eng as Workflow Engine
-    participant GH_C as GitHub Connector
-    participant SL_C as Slack Connector
-    participant JR_C as Jira Connector
-    participant DB as SQLite
-
-    JR->>WH: POST /webhooks/jira<br/>{webhookEvent: jira:issue_created}
-    WH->>Bus: publish(jira.issue.created)
-    Bus->>DB: persist event
-
-    Bus->>Eng: dispatch → jira_created_workflow
-
-    Note over Eng: Step 1/3
-    Eng->>GH_C: github.create_issue()
-    GH_C-->>Eng: {number: 42, url: "..."}
-
-    Note over Eng: Step 2/3
-    Eng->>SL_C: slack.send_message(#dev-team)
-    SL_C-->>Eng: {ok: true}
-
-    Note over Eng: Step 3/3
-    Eng->>JR_C: jira.update_ticket(github_link)
-    JR_C-->>Eng: {updated: true}
+    Eng->>Reg: execute_tool(slack.send_message)
+    Reg->>SL_C: send_message(#build-alerts)
+    SL_C-->>Reg: {ok: true}
+    Reg-->>Eng: result
 
     Eng->>DB: persist WorkflowRun
 ```
@@ -283,26 +280,31 @@ graph LR
     end
 
     subgraph "Depends on secrets"
-        DB["database/models"]
+        DB["database/postgres"]
         I_SL["integrations/slack"]
         I_GH["integrations/github"]
         I_JR["integrations/jira"]
         I_CO["integrations/confluence"]
         I_JK["integrations/jenkins"]
         I_GM["integrations/gmail"]
-        LLM["LLMClient"]
+        IC["agent/ironclaw_client"]
+    end
+
+    subgraph "Standalone"
+        TOOL_REG["tools/registry"]
+        MODELS["database/models"]
     end
 
     subgraph "Depends on events + DB"
         BUS["events/bus"]
     end
 
-    subgraph "Depends on LLM"
+    subgraph "Depends on IronClaw"
         MEM["agent/memory"]
         PLAN["agent/planner"]
     end
 
-    subgraph "Depends on bus + loader"
+    subgraph "Depends on bus + loader + registry"
         LOADER["workflows/loader"]
         ENGINE["workflows/engine"]
     end
@@ -319,16 +321,19 @@ graph LR
 
     SECRETS --> DB
     SECRETS --> I_SL & I_GH & I_JR & I_CO & I_JK & I_GM
-    SECRETS --> LLM
+    SECRETS --> IC
     SECRETS --> WEBHOOK
     TYPES --> BUS
+    MODELS --> DB
     DB --> BUS
     DB --> ENGINE
     DB --> ORCH
-    LLM --> PLAN
-    LLM --> ORCH
+    IC --> PLAN
+    IC --> ORCH
     MEM --> ORCH
     PLAN --> ORCH
+    TOOL_REG --> ORCH
+    TOOL_REG --> ENGINE
     BUS --> ENGINE
     BUS --> WEBHOOK
     LOADER --> ENGINE

@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
 import re
 from functools import lru_cache
 from typing import Optional
@@ -32,11 +31,10 @@ _REDACT_PATTERNS: list[re.Pattern] = [
 class AppSecrets(BaseSettings):
     """Central secrets model — all values loaded from env vars / .env."""
 
-    # LLM
-    openclaw_provider: str = "openrouter"
-    openclaw_api_key: str = ""
-    openclaw_model: str = "openai/gpt-4o"
-    openclaw_base_url: str = ""
+    # IronClaw Runtime
+    ironclaw_url: str = "http://localhost:9090"
+    ironclaw_api_key: str = ""
+    ironclaw_timeout: int = 120
 
     # Slack
     slack_bot_token: str = ""
@@ -72,8 +70,8 @@ class AppSecrets(BaseSettings):
     webhook_host: str = "0.0.0.0"
     webhook_port: int = Field(default=8080)
 
-    # Database
-    database_url: str = "sqlite:///data/agent.db"
+    # Database (PostgreSQL)
+    database_url: str = "postgresql://claw:claw@localhost:5432/clawagent"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

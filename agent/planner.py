@@ -1,8 +1,7 @@
-"""Workflow planning module for decomposing user requests into tool steps."""
+"""Workflow planning module — delegates plan creation to IronClaw."""
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -28,100 +27,60 @@ class ActionPlan(BaseModel):
     steps: list[PlanStep] = Field(default_factory=list, description="Ordered list of tool execution steps")
 
 
-PLANNER_PROMPT = """You are a developer automation assistant. Given a user request and available tools, decompose the request into a structured action plan.
-
-Available tools: {tools}
-
-User request: {user_request}
-
-{context_section}
-
-Respond with ONLY valid JSON (no markdown, no explanation). Use this exact structure:
-{{
-  "goal": "brief goal description",
-  "reasoning": "why this plan makes sense",
-  "steps": [
-    {{
-      "tool_name": "tool_name",
-      "tool_args": {{ "arg1": "value1" }},
-      "description": "what this step does",
-      "depends_on": []
-    }}
-  ]
-}}
-
-For each step, set depends_on to a list of step indices (0-based) that must complete before this step.
-Return ONLY the JSON object."""
-
-
 class Planner:
-    """
-    Decomposes user requests into structured action plans using an LLM.
+    """Decomposes user requests into structured action plans via IronClaw.
+
+    Unlike direct LLM planning, this planner delegates entirely to the
+    IronClaw runtime, which handles prompt construction and response parsing.
     """
 
-    def __init__(self, llm_client: Any) -> None:
+    def __init__(self, ironclaw_client: Any) -> None:
         """
-        Initialize the planner with an LLM client.
-
         Args:
-            llm_client: Client with async chat(messages) method returning text.
+            ironclaw_client: :pyclass:`IronClawClient` instance.
         """
-        self._llm = llm_client
+        self._ironclaw = ironclaw_client
 
     async def create_plan(
         self,
         user_request: str,
-        available_tools: list[str],
+        available_tools: list[dict[str, Any]],
         context: str = "",
     ) -> ActionPlan:
-        """
-        Create an action plan from a user request using available tools.
+        """Create an action plan by asking IronClaw to decompose the request.
 
         Args:
             user_request: The user's request or question.
-            available_tools: List of tool names the agent can use.
-            context: Optional additional context (e.g. conversation summary).
+            available_tools: Tool schemas from the registry.
+            context: Optional additional context.
 
         Returns:
-            Parsed ActionPlan with goal, reasoning, and steps.
+            Parsed :pyclass:`ActionPlan`.
 
         Raises:
-            ValueError: If LLM response cannot be parsed as valid ActionPlan.
+            ValueError: If IronClaw response cannot be parsed as a valid plan.
         """
-        tools_str = ", ".join(available_tools)
-        context_section = f"Context: {context}\n\n" if context else ""
-
-        prompt = PLANNER_PROMPT.format(
-            tools=tools_str,
+        data = await self._ironclaw.plan(
             user_request=user_request,
-            context_section=context_section,
+            tools=available_tools,
+            context=context,
         )
-
-        messages = [
-            {"role": "system", "content": "You output only valid JSON. No markdown, no extra text."},
-            {"role": "user", "content": prompt},
-        ]
-
-        response = await self._llm.chat(messages)
-        logger.debug("Planner LLM response: %s", response[:500])
-
-        response = response.strip()
-        if response.startswith("```"):
-            lines = response.split("\n")
-            json_lines = [
-                line for line in lines
-                if not line.startswith("```") and line.strip()
-            ]
-            response = "\n".join(json_lines)
+        logger.debug("IronClaw plan response: %s", str(data)[:500])
 
         try:
-            data = json.loads(response)
-        except json.JSONDecodeError as e:
-            logger.error("Planner could not parse JSON: %s", e)
-            raise ValueError(f"Invalid plan JSON: {e}") from e
-
-        try:
-            return ActionPlan(**data)
-        except Exception as e:
-            logger.error("Planner could not build ActionPlan: %s", e)
-            raise ValueError(f"Invalid plan structure: {e}") from e
+            steps = []
+            for action in data.get("actions", data.get("steps", [])):
+                steps.append(PlanStep(
+                    tool_name=action.get("tool") or action.get("tool_name", ""),
+                    tool_args=action.get("parameters") or action.get("tool_args", {}),
+                    description=action.get("description", ""),
+                    depends_on=action.get("depends_on", []),
+                ))
+            return ActionPlan(
+                goal=data.get("goal", user_request),
+                reasoning=data.get("reasoning", ""),
+                steps=steps,
+            )
+        except Exception as exc:
+            logger.error("Could not build ActionPlan from IronClaw response: %s", exc)
+            raise ValueError(f"Invalid plan structure: {exc}") from exc

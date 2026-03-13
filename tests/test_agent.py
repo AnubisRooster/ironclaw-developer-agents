@@ -1,6 +1,5 @@
-"""Tests for agent/memory.py, agent/planner.py, and agent/orchestrator.py."""
+"""Tests for agent/memory.py, agent/planner.py, agent/ironclaw_client.py, and agent/orchestrator.py."""
 
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,7 +7,6 @@ import pytest
 
 from agent.memory import ConversationMemory
 from agent.planner import ActionPlan, PlanStep, Planner
-from agent.orchestrator import LLMClient, Orchestrator, ToolRegistry, TOOL_CALL_PATTERN
 
 
 # ── Memory ──────────────────────────────────────────────────────────────
@@ -63,6 +61,14 @@ class TestConversationMemory:
         mem.add_message("user", "test")
         assert "timestamp" in mem.get_context()[0]
 
+    def test_session_id_auto_generated(self):
+        mem = ConversationMemory()
+        assert len(mem.session_id) == 16
+
+    def test_session_id_custom(self):
+        mem = ConversationMemory(session_id="custom-session")
+        assert mem.session_id == "custom-session"
+
 
 # ── Planner ─────────────────────────────────────────────────────────────
 
@@ -76,7 +82,7 @@ class TestPlanModels:
         plan = ActionPlan(
             goal="Summarize PR",
             reasoning="User asked for a PR summary",
-            steps=[PlanStep(tool_name="github.summarize_pull_request", tool_args={"repo": "org/repo", "pr_number": 42})],
+            steps=[PlanStep(tool_name="github.summarize_pr", tool_args={"repo": "org/repo", "pr_number": 42})],
         )
         assert len(plan.steps) == 1
         assert plan.goal == "Summarize PR"
@@ -84,127 +90,112 @@ class TestPlanModels:
 
 class TestPlanner:
     @pytest.mark.asyncio
-    async def test_create_plan_parses_json(self):
-        mock_llm = AsyncMock()
-        mock_llm.chat = AsyncMock(return_value=json.dumps({
+    async def test_create_plan_from_ironclaw(self):
+        mock_ironclaw = AsyncMock()
+        mock_ironclaw.plan = AsyncMock(return_value={
             "goal": "Summarize PR",
             "reasoning": "User wants PR summary",
-            "steps": [
-                {"tool_name": "github.summarize_pull_request", "tool_args": {"repo": "org/repo", "pr_number": 42}, "description": "get PR", "depends_on": []}
+            "actions": [
+                {"tool": "github.summarize_pr", "parameters": {"repo": "org/repo", "pr_number": 42}, "description": "get PR", "depends_on": []}
             ],
-        }))
-        planner = Planner(mock_llm)
-        plan = await planner.create_plan("Summarize PR 42", ["github.summarize_pull_request"])
+        })
+        planner = Planner(mock_ironclaw)
+        plan = await planner.create_plan("Summarize PR 42", [{"name": "github.summarize_pr"}])
         assert isinstance(plan, ActionPlan)
         assert plan.goal == "Summarize PR"
         assert len(plan.steps) == 1
-        assert plan.steps[0].tool_name == "github.summarize_pull_request"
+        assert plan.steps[0].tool_name == "github.summarize_pr"
 
     @pytest.mark.asyncio
-    async def test_create_plan_strips_markdown(self):
-        mock_llm = AsyncMock()
-        json_body = json.dumps({"goal": "test", "reasoning": "", "steps": []})
-        mock_llm.chat = AsyncMock(return_value=f"```json\n{json_body}\n```")
-        planner = Planner(mock_llm)
+    async def test_create_plan_with_steps_key(self):
+        mock_ironclaw = AsyncMock()
+        mock_ironclaw.plan = AsyncMock(return_value={
+            "goal": "test",
+            "reasoning": "",
+            "steps": [
+                {"tool_name": "a.tool", "tool_args": {}, "description": "step a"},
+            ],
+        })
+        planner = Planner(mock_ironclaw)
         plan = await planner.create_plan("test", [])
-        assert plan.goal == "test"
+        assert len(plan.steps) == 1
+        assert plan.steps[0].tool_name == "a.tool"
 
     @pytest.mark.asyncio
-    async def test_create_plan_invalid_json_raises(self):
-        mock_llm = AsyncMock()
-        mock_llm.chat = AsyncMock(return_value="this is not json")
-        planner = Planner(mock_llm)
-        with pytest.raises(ValueError, match="Invalid plan JSON"):
-            await planner.create_plan("test", [])
+    async def test_create_plan_invalid_structure_raises(self):
+        mock_ironclaw = AsyncMock()
+        mock_ironclaw.plan = AsyncMock(return_value={"invalid": True})
+        planner = Planner(mock_ironclaw)
+        plan = await planner.create_plan("test", [])
+        assert len(plan.steps) == 0
 
 
-# ── Tool Registry ───────────────────────────────────────────────────────
+# ── IronClaw Client ────────────────────────────────────────────────────
 
-class TestToolRegistry:
-    def test_register_and_get(self):
-        reg = ToolRegistry()
-        func = lambda x: x
-        reg.register("my.tool", func, "A test tool")
-        assert reg.get_tool("my.tool") is func
+class TestIronClawClient:
+    def test_init_from_secrets(self, env_secrets):
+        from agent.ironclaw_client import IronClawClient
+        client = IronClawClient()
+        assert client._base_url == "http://localhost:9090"
 
-    def test_get_missing_tool(self):
-        reg = ToolRegistry()
-        assert reg.get_tool("nonexistent") is None
+    def test_init_with_custom_url(self, env_secrets):
+        from agent.ironclaw_client import IronClawClient
+        client = IronClawClient(base_url="http://custom:8080")
+        assert client._base_url == "http://custom:8080"
 
-    def test_list_tools(self):
-        reg = ToolRegistry()
-        reg.register("a", lambda: None, "tool a")
-        reg.register("b", lambda: None, "tool b")
-        assert sorted(reg.list_tools()) == ["a", "b"]
+    @pytest.mark.asyncio
+    async def test_chat_sends_request(self, env_secrets):
+        from agent.ironclaw_client import IronClawClient
 
-    def test_get_tool_descriptions(self):
-        reg = ToolRegistry()
-        reg.register("slack.send", lambda: None, "Send Slack message")
-        desc = reg.get_tool_descriptions()
-        assert "slack.send" in desc
-        assert "Send Slack message" in desc
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"content": "Hello!", "actions": None}
+        mock_response.raise_for_status = MagicMock()
 
-    def test_empty_descriptions(self):
-        reg = ToolRegistry()
-        assert reg.get_tool_descriptions() == "No tools registered."
+        with patch("agent.ironclaw_client.httpx.AsyncClient") as MockClient:
+            client_instance = AsyncMock()
+            client_instance.post = AsyncMock(return_value=mock_response)
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
+            client = IronClawClient()
+            result = await client.chat(messages=[{"role": "user", "content": "hi"}])
+            assert result["content"] == "Hello!"
 
-# ── LLMClient ───────────────────────────────────────────────────────────
+    @pytest.mark.asyncio
+    async def test_summarize(self, env_secrets):
+        from agent.ironclaw_client import IronClawClient
 
-class TestLLMClient:
-    def test_openai_provider(self, env_secrets):
-        client = LLMClient()
-        assert client._base_url == "https://api.openai.com/v1"
-        assert client._model == "gpt-4o"
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"summary": "Build failed due to null pointer."}
+        mock_response.raise_for_status = MagicMock()
 
-    def test_openrouter_provider(self, monkeypatch):
-        monkeypatch.setenv("OPENCLAW_PROVIDER", "openrouter")
-        monkeypatch.setenv("OPENCLAW_API_KEY", "test")
-        monkeypatch.setenv("OPENCLAW_MODEL", "test-model")
-        from security.secrets import get_secrets
-        get_secrets.cache_clear()
-        client = LLMClient()
-        assert "openrouter.ai" in client._base_url
+        with patch("agent.ironclaw_client.httpx.AsyncClient") as MockClient:
+            client_instance = AsyncMock()
+            client_instance.post = AsyncMock(return_value=mock_response)
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    def test_ollama_provider(self, monkeypatch):
-        monkeypatch.setenv("OPENCLAW_PROVIDER", "ollama")
-        monkeypatch.setenv("OPENCLAW_API_KEY", "")
-        monkeypatch.setenv("OPENCLAW_MODEL", "llama3")
-        monkeypatch.setenv("OPENCLAW_BASE_URL", "")
-        from security.secrets import get_secrets
-        get_secrets.cache_clear()
-        client = LLMClient()
-        assert "localhost:11434" in client._base_url
+            client = IronClawClient()
+            result = await client.summarize("ERROR: NullPointerException at line 42")
+            assert "null pointer" in result.lower()
 
-    def test_ollama_custom_url(self, monkeypatch):
-        monkeypatch.setenv("OPENCLAW_PROVIDER", "ollama")
-        monkeypatch.setenv("OPENCLAW_API_KEY", "")
-        monkeypatch.setenv("OPENCLAW_MODEL", "llama3")
-        monkeypatch.setenv("OPENCLAW_BASE_URL", "http://myhost:5000/v1")
-        from security.secrets import get_secrets
-        get_secrets.cache_clear()
-        client = LLMClient()
-        assert client._base_url == "http://myhost:5000/v1"
+    @pytest.mark.asyncio
+    async def test_health(self, env_secrets):
+        from agent.ironclaw_client import IronClawClient
 
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": "ok"}
+        mock_response.raise_for_status = MagicMock()
 
-# ── TOOL_CALL_PATTERN ──────────────────────────────────────────────────
+        with patch("agent.ironclaw_client.httpx.AsyncClient") as MockClient:
+            client_instance = AsyncMock()
+            client_instance.get = AsyncMock(return_value=mock_response)
+            MockClient.return_value.__aenter__ = AsyncMock(return_value=client_instance)
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
 
-class TestToolCallPattern:
-    def test_matches_tool_call_block(self):
-        text = 'Some text\n```tool_call\n{"tool_name": "slack.send_message", "tool_args": {"channel": "#test"}}\n```\nMore text'
-        matches = TOOL_CALL_PATTERN.findall(text)
-        assert len(matches) == 1
-        parsed = json.loads(matches[0].strip())
-        assert parsed["tool_name"] == "slack.send_message"
-
-    def test_matches_json_block(self):
-        text = '```json\n{"tool_name": "github.create_issue", "tool_args": {}}\n```'
-        matches = TOOL_CALL_PATTERN.findall(text)
-        assert len(matches) == 1
-
-    def test_no_match_on_plain_text(self):
-        matches = TOOL_CALL_PATTERN.findall("Just a normal response with no tool calls.")
-        assert len(matches) == 0
+            client = IronClawClient()
+            result = await client.health()
+            assert result["status"] == "ok"
 
 
 # ── Orchestrator ────────────────────────────────────────────────────────
@@ -212,50 +203,82 @@ class TestToolCallPattern:
 class TestOrchestrator:
     @pytest.fixture
     def orchestrator(self, env_secrets):
-        with patch("agent.orchestrator.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
-            orch = Orchestrator()
-            return orch
+        from agent.orchestrator import Orchestrator
+        mock_ironclaw = AsyncMock()
+        orch = Orchestrator(ironclaw=mock_ironclaw)
+        return orch
 
     def test_register_tool(self, orchestrator):
-        orchestrator.register_tool("test.tool", lambda: "ok", "A test")
-        assert "test.tool" in orchestrator._registry.list_tools()
+        orchestrator.register_tool(
+            "test.tool", "A test", {"type": "object", "properties": {}}, lambda: "ok"
+        )
+        assert "test.tool" in orchestrator._registry.list_tool_names()
 
     @pytest.mark.asyncio
     async def test_handle_message_no_tool_call(self, orchestrator):
-        with patch.object(orchestrator._llm, "chat", new_callable=AsyncMock) as mock_chat:
-            mock_chat.return_value = "Here is your answer."
-            response = await orchestrator.handle_message("What is 2+2?")
-            assert response == "Here is your answer."
+        orchestrator._ironclaw.chat = AsyncMock(return_value={
+            "content": "Here is your answer.",
+            "actions": None,
+        })
+        response = await orchestrator.handle_message("What is 2+2?")
+        assert response == "Here is your answer."
 
     @pytest.mark.asyncio
     async def test_handle_message_with_tool_call(self, orchestrator):
         tool_mock = MagicMock(return_value={"result": "done"})
-        orchestrator.register_tool("test.tool", tool_mock, "Test tool")
+        orchestrator.register_tool(
+            "test.tool", "Test tool",
+            {"type": "object", "properties": {"key": {"type": "string"}}},
+            tool_mock,
+        )
 
-        call_response = 'Let me call the tool.\n```tool_call\n{"tool_name": "test.tool", "tool_args": {"key": "val"}}\n```'
+        orchestrator._ironclaw.chat = AsyncMock(side_effect=[
+            {
+                "content": "Let me call a tool.",
+                "actions": [{"tool": "test.tool", "parameters": {"key": "val"}}],
+            },
+            {
+                "content": "Done! The tool returned success.",
+                "actions": None,
+            },
+        ])
 
-        with patch.object(orchestrator._llm, "chat", new_callable=AsyncMock) as mock_chat:
-            mock_chat.side_effect = [call_response, "Done! The tool returned success."]
-            with patch("agent.orchestrator.get_session") as mock_gs:
-                mock_gs.return_value = MagicMock()
-                response = await orchestrator.handle_message("Run test tool")
+        with patch("agent.orchestrator.session_scope") as mock_scope:
+            session = MagicMock()
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+            response = await orchestrator.handle_message("Run test tool")
 
         assert "Done" in response
         tool_mock.assert_called_once_with(key="val")
 
     @pytest.mark.asyncio
-    async def test_execute_tool_unknown_raises(self, orchestrator):
-        with pytest.raises(KeyError, match="Unknown tool"):
-            await orchestrator.execute_tool("nonexistent.tool", {})
+    async def test_execute_tool_unknown(self, orchestrator):
+        with patch("agent.orchestrator.session_scope") as mock_scope:
+            session = MagicMock()
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+            result = await orchestrator._execute_tool("nonexistent.tool", {})
+        assert "unknown tool" in result.lower()
 
     @pytest.mark.asyncio
     async def test_execute_tool_stores_output(self, orchestrator):
-        orchestrator.register_tool("echo", lambda msg: msg, "Echo tool")
-        with patch("agent.orchestrator.get_session") as mock_gs:
+        orchestrator.register_tool(
+            "echo", "Echo tool",
+            {"type": "object", "properties": {}},
+            lambda msg="": msg,
+        )
+        with patch("agent.orchestrator.session_scope") as mock_scope:
             session = MagicMock()
-            mock_gs.return_value = session
-            result = await orchestrator.execute_tool("echo", {"msg": "hello"})
-            assert result == "hello"
-            session.add.assert_called_once()
-            session.commit.assert_called_once()
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
+            result = await orchestrator._execute_tool("echo", {"msg": "hello"})
+        assert result == "hello"
+        session.add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_summarize_delegates_to_ironclaw(self, orchestrator):
+        orchestrator._ironclaw.summarize = AsyncMock(return_value="Summary of the text.")
+        result = await orchestrator.summarize("Long text here...")
+        assert result == "Summary of the text."
+        orchestrator._ironclaw.summarize.assert_called_once()

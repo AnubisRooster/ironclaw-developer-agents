@@ -9,7 +9,6 @@ CLI commands:
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -19,8 +18,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Ensure the project root is on sys.path so sibling package imports work,
-# especially when running from a PyInstaller bundle.
 _PROJECT_ROOT = Path(__file__).resolve().parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -46,7 +43,9 @@ def _setup_logging() -> None:
 
 def _build_orchestrator():
     """Create the Orchestrator with all integrations registered as tools."""
+    from agent.ironclaw_client import IronClawClient
     from agent.orchestrator import Orchestrator
+    from tools.registry import ToolSchemaRegistry
     from integrations.slack import SlackIntegration
     from integrations.github_integration import GitHubIntegration
     from integrations.jira_integration import JiraIntegration
@@ -54,52 +53,260 @@ def _build_orchestrator():
     from integrations.jenkins import JenkinsIntegration
     from integrations.gmail import GmailIntegration
 
-    orch = Orchestrator()
+    registry = ToolSchemaRegistry()
+    ironclaw = IronClawClient()
+    orch = Orchestrator(ironclaw=ironclaw, registry=registry)
     secrets = get_secrets()
 
     # --- Slack tools ---
     if secrets.slack_bot_token:
         slack = SlackIntegration()
-        orch.register_tool("slack.send_message", slack.send_message, "Send a message to a Slack channel")
-        orch.register_tool("slack.read_channel_history", slack.read_channel_history, "Read recent messages from a Slack channel")
+        registry.register_tool(
+            name="slack.send_message",
+            description="Send a message to a Slack channel",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "channel": {"type": "string", "description": "Channel ID or name"},
+                    "text": {"type": "string", "description": "Message text"},
+                },
+                "required": ["channel", "text"],
+            },
+            handler=slack.send_message,
+        )
+        registry.register_tool(
+            name="slack.read_channel",
+            description="Read recent messages from a Slack channel",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "channel": {"type": "string", "description": "Channel ID"},
+                    "limit": {"type": "integer", "description": "Max messages", "default": 50},
+                },
+                "required": ["channel"],
+            },
+            handler=slack.read_channel_history,
+        )
 
     # --- GitHub tools ---
     if secrets.github_token:
         gh = GitHubIntegration()
-        orch.register_tool("github.create_issue", gh.create_issue, "Create a GitHub issue")
-        orch.register_tool("github.summarize_pull_request", gh.summarize_pull_request, "Summarize a GitHub pull request")
-        orch.register_tool("github.comment_on_pr", gh.comment_on_pr, "Comment on a GitHub pull request")
-        orch.register_tool("github.create_branch", gh.create_branch, "Create a new Git branch")
-        orch.register_tool("github.get_repo_activity", gh.get_repo_activity, "Get recent repository activity")
+        registry.register_tool(
+            name="github.create_issue",
+            description="Create a GitHub issue",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "Repository in owner/name format"},
+                    "title": {"type": "string", "description": "Issue title"},
+                    "body": {"type": "string", "description": "Issue body", "default": ""},
+                },
+                "required": ["repo", "title"],
+            },
+            handler=gh.create_issue,
+        )
+        registry.register_tool(
+            name="github.summarize_pr",
+            description="Summarize a GitHub pull request",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "pr_number": {"type": "integer"},
+                },
+                "required": ["repo", "pr_number"],
+            },
+            handler=gh.summarize_pull_request,
+        )
+        registry.register_tool(
+            name="github.comment_pr",
+            description="Comment on a GitHub pull request",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "pr_number": {"type": "integer"},
+                    "comment": {"type": "string"},
+                },
+                "required": ["repo", "pr_number", "comment"],
+            },
+            handler=gh.comment_on_pr,
+        )
+        registry.register_tool(
+            name="github.create_branch",
+            description="Create a new Git branch",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "branch_name": {"type": "string"},
+                    "from_branch": {"type": "string", "default": "main"},
+                },
+                "required": ["repo", "branch_name"],
+            },
+            handler=gh.create_branch,
+        )
 
     # --- Jira tools ---
     if secrets.jira_api_token:
         jira = JiraIntegration()
-        orch.register_tool("jira.create_ticket", jira.create_ticket, "Create a Jira ticket")
-        orch.register_tool("jira.update_ticket", jira.update_ticket, "Update a Jira ticket")
-        orch.register_tool("jira.link_github_issue", jira.link_github_issue, "Link a GitHub issue to a Jira ticket")
-        orch.register_tool("jira.get_ticket_details", jira.get_ticket_details, "Get details of a Jira ticket")
+        registry.register_tool(
+            name="jira.create_ticket",
+            description="Create a Jira ticket",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "description": {"type": "string", "default": ""},
+                    "issue_type": {"type": "string", "default": "Task"},
+                },
+                "required": ["project", "summary"],
+            },
+            handler=jira.create_ticket,
+        )
+        registry.register_tool(
+            name="jira.update_ticket",
+            description="Update a Jira ticket",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "ticket_key": {"type": "string"},
+                },
+                "required": ["ticket_key"],
+            },
+            handler=jira.update_ticket,
+        )
+        registry.register_tool(
+            name="jira.get_issue",
+            description="Get details of a Jira issue",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "ticket_key": {"type": "string"},
+                },
+                "required": ["ticket_key"],
+            },
+            handler=jira.get_ticket_details,
+        )
 
     # --- Confluence tools ---
     if secrets.confluence_api_token:
         conf = ConfluenceIntegration()
-        orch.register_tool("confluence.search_docs", conf.search_docs, "Search Confluence documentation")
-        orch.register_tool("confluence.summarize_page", conf.summarize_page, "Summarize a Confluence page")
-        orch.register_tool("confluence.create_page", conf.create_page, "Create a Confluence page")
+        registry.register_tool(
+            name="confluence.search_docs",
+            description="Search Confluence documentation",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer", "default": 10},
+                },
+                "required": ["query"],
+            },
+            handler=conf.search_docs,
+        )
+        registry.register_tool(
+            name="confluence.summarize_page",
+            description="Summarize a Confluence page",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "page_id": {"type": "string"},
+                },
+                "required": ["page_id"],
+            },
+            handler=conf.summarize_page,
+        )
+        registry.register_tool(
+            name="confluence.create_page",
+            description="Create a Confluence page",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "space": {"type": "string"},
+                    "title": {"type": "string"},
+                    "body": {"type": "string"},
+                    "parent_id": {"type": "string"},
+                },
+                "required": ["space", "title", "body"],
+            },
+            handler=conf.create_page,
+        )
 
     # --- Jenkins tools ---
     if secrets.jenkins_api_token:
         jenkins = JenkinsIntegration()
-        orch.register_tool("jenkins.trigger_build", jenkins.trigger_build, "Trigger a Jenkins build")
-        orch.register_tool("jenkins.get_build_status", jenkins.get_build_status, "Get Jenkins build status")
-        orch.register_tool("jenkins.fetch_build_logs", jenkins.fetch_build_logs, "Fetch Jenkins build logs")
+        registry.register_tool(
+            name="jenkins.trigger_build",
+            description="Trigger a Jenkins build",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "job_name": {"type": "string"},
+                    "parameters": {"type": "object", "default": {}},
+                },
+                "required": ["job_name"],
+            },
+            handler=jenkins.trigger_build,
+        )
+        registry.register_tool(
+            name="jenkins.fetch_logs",
+            description="Fetch Jenkins build logs",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "job_name": {"type": "string"},
+                    "build_number": {"type": "integer"},
+                },
+                "required": ["job_name"],
+            },
+            handler=jenkins.fetch_build_logs,
+        )
 
     # --- Gmail tools ---
     gmail = GmailIntegration()
-    orch.register_tool("gmail.read_emails", gmail.read_emails, "Read emails from Gmail")
-    orch.register_tool("gmail.summarize_thread", gmail.summarize_thread, "Summarize a Gmail thread")
-    orch.register_tool("gmail.send_email", gmail.send_email, "Send an email via Gmail")
-    orch.register_tool("gmail.extract_action_items", gmail.extract_action_items, "Extract action items from a Gmail thread")
+    registry.register_tool(
+        name="gmail.read_thread",
+        description="Read and summarize a Gmail thread",
+        parameters={
+            "type": "object",
+            "properties": {
+                "thread_id": {"type": "string"},
+            },
+            "required": ["thread_id"],
+        },
+        handler=gmail.summarize_thread,
+    )
+    registry.register_tool(
+        name="gmail.send_email",
+        description="Send an email via Gmail",
+        parameters={
+            "type": "object",
+            "properties": {
+                "to": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+        handler=gmail.send_email,
+    )
+
+    # --- Agent tools (delegated to IronClaw) ---
+    registry.register_tool(
+        name="agent.summarize",
+        description="Summarize arbitrary content using the AI reasoning engine",
+        parameters={
+            "type": "object",
+            "properties": {
+                "content": {"type": "string", "description": "Text to summarize"},
+                "instruction": {"type": "string", "description": "Optional focus directive", "default": ""},
+            },
+            "required": ["content"],
+        },
+        handler=orch.summarize,
+    )
 
     return orch
 
@@ -108,11 +315,10 @@ def _setup_workflow_engine(orchestrator):
     """Wire the workflow engine to the event bus with orchestrator tools."""
     from workflows.engine import WorkflowEngine
 
-    engine = WorkflowEngine(workflow_dir=str(_PROJECT_ROOT / "workflows"))
-    for name in orchestrator._registry.list_tools():
-        tool_func = orchestrator._registry.get_tool(name)
-        if tool_func:
-            engine.register_tool(name, tool_func)
+    engine = WorkflowEngine(
+        workflow_dir=str(_PROJECT_ROOT / "workflows"),
+        registry=orchestrator.registry,
+    )
     engine.load()
     return engine
 
@@ -124,7 +330,7 @@ def _setup_workflow_engine(orchestrator):
 @click.group(invoke_without_command=True)
 @click.pass_context
 def cli(ctx):
-    """Claw Agent — Developer Automation Agent."""
+    """Claw Agent — Developer Automation Agent powered by IronClaw."""
     _setup_logging()
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())

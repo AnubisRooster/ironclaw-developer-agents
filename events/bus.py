@@ -1,4 +1,4 @@
-"""In-process async event bus with topic-based pub/sub."""
+"""In-process async event bus with topic-based pub/sub and PostgreSQL persistence."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ import logging
 from collections import defaultdict
 from typing import Any, Awaitable, Callable, Dict, List
 
-from database.models import Event as EventRow, get_session
+from database.postgres import session_scope
+from database.models import Event as EventRow
 from events.types import AgentEvent
 
 logger = logging.getLogger("claw-agent.events")
@@ -33,14 +34,13 @@ class EventBus:
         self._global_subscribers.append(handler)
 
     async def publish(self, event: AgentEvent) -> None:
-        """Publish an event — persists to DB and dispatches to subscribers."""
+        """Publish an event — persists to PostgreSQL and dispatches to subscribers."""
         logger.info("Publishing event: %s", event)
         self._persist(event)
 
         handlers = list(self._global_subscribers) + list(
             self._subscribers.get(event.event_type, [])
         )
-        # Also match wildcard prefixes (e.g. "github.*" matches "github.pull_request.opened")
         for pattern, subs in self._subscribers.items():
             if pattern.endswith(".*"):
                 prefix = pattern[:-2]
@@ -60,17 +60,15 @@ class EventBus:
                     )
 
     def _persist(self, event: AgentEvent) -> None:
-        """Write event to the local SQLite database."""
+        """Write event to the PostgreSQL database."""
         try:
-            session = get_session()
-            row = EventRow(
-                event_type=event.event_type,
-                source=event.source.value,
-                payload=json.dumps(event.payload, default=str),
-            )
-            session.add(row)
-            session.commit()
-            session.close()
+            with session_scope() as session:
+                row = EventRow(
+                    event_type=event.event_type,
+                    source=event.source.value,
+                    payload=json.dumps(event.payload, default=str),
+                )
+                session.add(row)
         except Exception:
             logger.exception("Failed to persist event %s", event.id)
 

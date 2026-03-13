@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import click
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -29,6 +28,7 @@ def _print_banner() -> None:
     console.print(
         Panel.fit(
             "[bold cyan]Claw Agent[/bold cyan] — Developer Automation Assistant\n"
+            "Powered by [bold]IronClaw[/bold] (Rust OpenClaw Runtime)\n"
             "Type your request in natural language. Type [bold]/quit[/bold] to exit.",
             border_style="cyan",
         )
@@ -52,7 +52,7 @@ async def _chat_loop(orchestrator) -> None:  # noqa: ANN001
             console.print("[info]Goodbye.[/info]")
             break
 
-        with console.status("[info]Thinking...[/info]", spinner="dots"):
+        with console.status("[info]Thinking via IronClaw...[/info]", spinner="dots"):
             try:
                 response = await orchestrator.handle_message(user_input)
             except Exception as exc:

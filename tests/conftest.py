@@ -3,7 +3,6 @@
 import os
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -23,14 +22,24 @@ def _reset_secrets_cache():
     get_secrets.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_db_singletons():
+    """Reset the database singletons between tests."""
+    import database.postgres as pg
+    pg._engine = None
+    pg._SessionLocal = None
+    yield
+    pg._engine = None
+    pg._SessionLocal = None
+
+
 @pytest.fixture
 def env_secrets(monkeypatch):
     """Set a minimal .env-like set of secrets for testing."""
     vals = {
-        "OPENCLAW_PROVIDER": "openai",
-        "OPENCLAW_API_KEY": "sk-test-key-123",
-        "OPENCLAW_MODEL": "gpt-4o",
-        "OPENCLAW_BASE_URL": "",
+        "IRONCLAW_URL": "http://localhost:9090",
+        "IRONCLAW_API_KEY": "test-ironclaw-key",
+        "IRONCLAW_TIMEOUT": "120",
         "SLACK_BOT_TOKEN": "xoxb-test-token",
         "SLACK_APP_TOKEN": "xapp-test-token",
         "SLACK_SIGNING_SECRET": "test-signing-secret",

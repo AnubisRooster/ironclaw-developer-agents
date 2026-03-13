@@ -1,23 +1,20 @@
 agent:
   name: claw-agent
-  version: 0.1.0
+  version: 0.2.0
   log_level: INFO
   log_file: logs/agent.log
 
-llm:
-  provider: ${OPENCLAW_PROVIDER:-openrouter}
-  api_key: ${OPENCLAW_API_KEY}
-  model: ${OPENCLAW_MODEL:-openai/gpt-4o}
-  base_url: ${OPENCLAW_BASE_URL:-}
-  temperature: 0.2
-  max_tokens: 4096
+ironclaw:
+  url: ${IRONCLAW_URL:-http://localhost:9090}
+  api_key: ${IRONCLAW_API_KEY:-}
+  timeout: ${IRONCLAW_TIMEOUT:-120}
 
 server:
   host: ${WEBHOOK_HOST:-0.0.0.0}
   port: ${WEBHOOK_PORT:-8080}
 
 database:
-  url: ${DATABASE_URL:-sqlite:///data/agent.db}
+  url: ${DATABASE_URL:-postgresql://claw:claw@localhost:5432/clawagent}
 
 integrations:
   slack:

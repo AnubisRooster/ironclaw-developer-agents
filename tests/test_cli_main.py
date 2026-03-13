@@ -12,7 +12,7 @@ class TestCLIChat:
         assert callable(start_chat)
 
     def test_print_banner(self, capsys):
-        from cli.chat import _print_banner, console
+        from cli.chat import _print_banner
         _print_banner()
 
 
@@ -59,10 +59,11 @@ class TestMainCLI:
              patch("integrations.jira_integration.JIRA"), \
              patch("integrations.confluence.Confluence"), \
              patch("integrations.jenkins.jenkins.Jenkins"), \
-             patch("integrations.gmail.os.path.exists", return_value=False):
+             patch("integrations.gmail.os.path.exists", return_value=False), \
+             patch("agent.ironclaw_client.IronClawClient"):
             from main import _build_orchestrator
             orch = _build_orchestrator()
-            tools = orch._registry.list_tools()
+            tools = orch._registry.list_tool_names()
             assert len(tools) > 0
 
     def test_setup_logging(self, env_secrets, tmp_path, monkeypatch):

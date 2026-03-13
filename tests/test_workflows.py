@@ -1,8 +1,5 @@
 """Tests for workflows/loader.py and workflows/engine.py."""
 
-import json
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -107,31 +104,30 @@ class TestWorkflowEngine:
     @pytest.fixture
     def engine(self):
         from events.bus import EventBus
+        from tools.registry import ToolSchemaRegistry
         from workflows.engine import WorkflowEngine
         bus = EventBus()
-        engine = WorkflowEngine(bus=bus, workflow_dir="workflows")
-        return engine, bus
+        registry = ToolSchemaRegistry()
+        engine = WorkflowEngine(bus=bus, workflow_dir="workflows", registry=registry)
+        return engine, bus, registry
 
     def test_load_registers_triggers(self, engine):
-        eng, bus = engine
-        with patch("workflows.engine.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
+        eng, bus, registry = engine
+        with patch("workflows.engine.session_scope") as mock_scope:
+            session = MagicMock()
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             eng.load()
         assert len(bus._subscribers) > 0
-
-    def test_register_tool(self, engine):
-        eng, _ = engine
-        eng.register_tool("test", lambda: "ok")
-        assert "test" in eng._tool_registry
 
     @pytest.mark.asyncio
     async def test_run_workflow(self, engine):
         from events.types import AgentEvent, EventSource
         from workflows.loader import WorkflowAction, WorkflowDefinition
 
-        eng, bus = engine
-        eng.register_tool("step_a", lambda **kw: {"done": True})
-        eng.register_tool("step_b", lambda **kw: {"also_done": True})
+        eng, bus, registry = engine
+        registry.register_tool("step_a", "Step A", {"type": "object", "properties": {}}, lambda **kw: {"done": True})
+        registry.register_tool("step_b", "Step B", {"type": "object", "properties": {}}, lambda **kw: {"also_done": True})
 
         wf = WorkflowDefinition(
             name="test_wf",
@@ -143,8 +139,14 @@ class TestWorkflowEngine:
         )
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
 
-        with patch("workflows.engine.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
+        with patch("workflows.engine.session_scope") as mock_scope:
+            session = MagicMock()
+            run_obj = MagicMock()
+            run_obj.id = 1
+            session.flush = MagicMock()
+            session.get = MagicMock(return_value=run_obj)
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             result = await eng.run_workflow(wf, event)
 
         assert result["status"] == "completed"
@@ -155,7 +157,7 @@ class TestWorkflowEngine:
         from events.types import AgentEvent, EventSource
         from workflows.loader import WorkflowAction, WorkflowDefinition
 
-        eng, _ = engine
+        eng, _, registry = engine
         wf = WorkflowDefinition(
             name="fail_wf",
             trigger="test.event",
@@ -166,8 +168,14 @@ class TestWorkflowEngine:
         )
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
 
-        with patch("workflows.engine.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
+        with patch("workflows.engine.session_scope") as mock_scope:
+            session = MagicMock()
+            run_obj = MagicMock()
+            run_obj.id = 1
+            session.flush = MagicMock()
+            session.get = MagicMock(return_value=run_obj)
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             result = await eng.run_workflow(wf, event)
 
         assert result["status"] == "failed"
@@ -178,8 +186,8 @@ class TestWorkflowEngine:
         from events.types import AgentEvent, EventSource
         from workflows.loader import WorkflowAction, WorkflowDefinition
 
-        eng, _ = engine
-        eng.register_tool("good_step", lambda **kw: {"ok": True})
+        eng, _, registry = engine
+        registry.register_tool("good_step", "Good step", {"type": "object", "properties": {}}, lambda **kw: {"ok": True})
 
         wf = WorkflowDefinition(
             name="continue_wf",
@@ -191,8 +199,14 @@ class TestWorkflowEngine:
         )
         event = AgentEvent(event_type="test.event", source=EventSource.SYSTEM)
 
-        with patch("workflows.engine.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
+        with patch("workflows.engine.session_scope") as mock_scope:
+            session = MagicMock()
+            run_obj = MagicMock()
+            run_obj.id = 1
+            session.flush = MagicMock()
+            session.get = MagicMock(return_value=run_obj)
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             result = await eng.run_workflow(wf, event)
 
         assert result["status"] == "completed"
@@ -201,13 +215,20 @@ class TestWorkflowEngine:
     @pytest.mark.asyncio
     async def test_event_triggers_workflow(self, engine):
         from events.types import AgentEvent, EventSource
-        eng, bus = engine
-        eng.register_tool("github.summarize_pull_request", lambda **kw: {"title": "PR"})
-        eng.register_tool("slack.send_message", lambda **kw: {"ok": True})
-        eng.register_tool("jira.link_github_issue", lambda **kw: {"linked": True})
+        eng, bus, registry = engine
 
-        with patch("workflows.engine.get_session") as mock_gs:
-            mock_gs.return_value = MagicMock()
+        registry.register_tool("github.summarize_pull_request", "Summarize PR", {"type": "object", "properties": {}}, lambda **kw: {"title": "PR"})
+        registry.register_tool("slack.send_message", "Send Slack", {"type": "object", "properties": {}}, lambda **kw: {"ok": True})
+        registry.register_tool("jira.link_github_issue", "Link Jira", {"type": "object", "properties": {}}, lambda **kw: {"linked": True})
+
+        with patch("workflows.engine.session_scope") as mock_scope:
+            session = MagicMock()
+            run_obj = MagicMock()
+            run_obj.id = 1
+            session.flush = MagicMock()
+            session.get = MagicMock(return_value=run_obj)
+            mock_scope.return_value.__enter__ = MagicMock(return_value=session)
+            mock_scope.return_value.__exit__ = MagicMock(return_value=False)
             eng.load()
 
             event = AgentEvent(
@@ -215,6 +236,8 @@ class TestWorkflowEngine:
                 source=EventSource.GITHUB,
                 payload={"repo": "org/repo", "pr_number": 1},
             )
-            with patch("events.bus.get_session") as bus_gs:
-                bus_gs.return_value = MagicMock()
+            with patch("events.bus.session_scope") as bus_scope:
+                bus_session = MagicMock()
+                bus_scope.return_value.__enter__ = MagicMock(return_value=bus_session)
+                bus_scope.return_value.__exit__ = MagicMock(return_value=False)
                 await bus.publish(event)

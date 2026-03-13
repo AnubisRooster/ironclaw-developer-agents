@@ -1,39 +1,112 @@
 # Claw Agent — Developer Automation Agent
 
-A local, modular automation agent that orchestrates workflows across Slack, GitHub, Jira, Confluence, Jenkins, and Gmail using LLM-powered reasoning via OpenClaw.
+A local developer automation agent that synchronizes workflows between Slack, GitHub, Jira, Confluence, Jenkins, and Gmail. Powered by **IronClaw**, the Rust-based OpenClaw runtime, as the AI reasoning engine.
 
-Compiles to a single Windows `.exe` via PyInstaller.
+Uses **PostgreSQL** as the primary database. Compiles to a single Windows `.exe` via PyInstaller.
+
+---
+
+## Architecture
+
+```
+Python Orchestrator
+     │
+     │  HTTP / JSON
+     ▼
+IronClaw Runtime (Rust)      ← AI reasoning engine
+     │
+     ▼
+LLM Provider
+```
+
+All reasoning — prompt interpretation, planning, tool selection, and summarization — is delegated to the IronClaw runtime. The Python platform handles integrations, workflows, event processing, webhook handling, and tool execution.
+
+```
+┌──────────────────────────────────────────────────────┐
+│                    CLI / Chat                         │
+├──────────────────────────────────────────────────────┤
+│                  Orchestrator                         │
+│     (IronClaw Client  ·  Planner  ·  Memory)         │
+├──────────────────────────────────────────────────────┤
+│            Tool Schema Registry                       │
+├────────┬────────┬──────┬───────┬────────┬────────────┤
+│ Slack  │ GitHub │ Jira │ Confl │Jenkins │   Gmail    │
+├────────┴────────┴──────┴───────┴────────┴────────────┤
+│         Event Bus  ←  Webhook Server                  │
+├──────────────────────────────────────────────────────┤
+│     Workflow Engine  (YAML-defined automations)       │
+├──────────────────────────────────────────────────────┤
+│  PostgreSQL Database  ·  Secure Credential Store      │
+└──────────────────────────────────────────────────────┘
+```
+
+### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **IronClaw Client** | `agent/ironclaw_client.py` | HTTP client for the IronClaw Rust runtime |
+| **Orchestrator** | `agent/orchestrator.py` | Coordinates IronClaw, tool execution, and memory |
+| **Tool Schema Registry** | `tools/registry.py` | Dynamic tool registration with JSON schemas |
+| **Integrations** | `integrations/` | Slack, GitHub, Jira, Confluence, Jenkins, Gmail connectors |
+| **Workflow Engine** | `workflows/` | Loads YAML workflows, executes action chains on events |
+| **Event Bus** | `events/` | In-process async pub/sub with topic-based routing |
+| **Webhook Server** | `webhooks/` | FastAPI endpoints for GitHub, Jira, Jenkins, Slack |
+| **CLI** | `cli/` | Rich-powered interactive chat interface |
+| **Security** | `security/` | Secret loading, log redaction, webhook signature validation |
+| **Database** | `database/` | PostgreSQL via SQLAlchemy — events, workflows, tool results, memory |
 
 ---
 
 ## Quick Start
 
-### 1. Clone and install
+### 1. Prerequisites
+
+- Python 3.11+
+- PostgreSQL running locally
+- IronClaw runtime running on `http://localhost:9090`
+
+### 2. Clone and install
 
 ```bash
-cd developer-agent
+cd ironclaw-developer-agent
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 3. Set up PostgreSQL
+
+```bash
+createdb clawagent
+```
+
+Or use Docker:
+
+```bash
+docker run -d --name claw-postgres \
+  -e POSTGRES_USER=claw \
+  -e POSTGRES_PASSWORD=claw \
+  -e POSTGRES_DB=clawagent \
+  -p 5432:5432 \
+  postgres:16
+```
+
+### 4. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the credentials for the integrations you want to enable. At minimum, set:
+Edit `.env` and set at minimum:
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENCLAW_PROVIDER` | `openrouter`, `openai`, or `ollama` |
-| `OPENCLAW_API_KEY` | API key for your chosen LLM provider |
-| `OPENCLAW_MODEL` | Model identifier (e.g. `openai/gpt-4o`) |
+| `IRONCLAW_URL` | URL of IronClaw runtime (default: `http://localhost:9090`) |
+| `DATABASE_URL` | PostgreSQL connection string |
 
 Each integration (Slack, GitHub, Jira, etc.) is optional — the agent gracefully skips any integration whose credentials are not set.
 
-### 3. Run the agent
+### 5. Run the agent
 
 **Interactive chat:**
 
@@ -55,39 +128,49 @@ python main.py run
 
 ---
 
-## Architecture
+## IronClaw Runtime
 
+IronClaw is the Rust variant of OpenClaw and serves as the AI reasoning engine. The Python application communicates with it via HTTP API calls.
+
+**IronClaw is responsible for:**
+- Prompt interpretation
+- Planning actions
+- Selecting tools
+- Summarization
+
+**The Python platform is responsible for:**
+- Integration connectors
+- Workflow execution
+- Event processing
+- Webhook handling
+- Tool execution
+
+The orchestrator sends conversation messages and available tool schemas to IronClaw. IronClaw returns either a text response or an `actions` list of tool calls to execute.
+
+---
+
+## Tool Schema Registry
+
+Every integration registers its tools with JSON Schema definitions. IronClaw queries this registry to understand available capabilities.
+
+Example tool schema:
+
+```json
+{
+  "name": "github.summarize_pr",
+  "description": "Summarize a GitHub pull request",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "repo": {"type": "string"},
+      "pr_number": {"type": "integer"}
+    },
+    "required": ["repo", "pr_number"]
+  }
+}
 ```
-┌──────────────────────────────────────────────────────┐
-│                    CLI / Chat                         │
-├──────────────────────────────────────────────────────┤
-│                  Orchestrator                         │
-│        (LLM Client  ·  Planner  ·  Memory)           │
-├──────────────────────────────────────────────────────┤
-│              Tool Registry                            │
-├────────┬────────┬──────┬───────┬────────┬────────────┤
-│ Slack  │ GitHub │ Jira │ Confl │Jenkins │   Gmail    │
-├────────┴────────┴──────┴───────┴────────┴────────────┤
-│         Event Bus  ←  Webhook Server                  │
-├──────────────────────────────────────────────────────┤
-│     Workflow Engine  (YAML-defined automations)       │
-├──────────────────────────────────────────────────────┤
-│   SQLite Database  ·  Secure Credential Store         │
-└──────────────────────────────────────────────────────┘
-```
 
-### Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| **Agent Core** | `agent/` | LLM client, orchestrator, planner, conversation memory |
-| **Integrations** | `integrations/` | Slack, GitHub, Jira, Confluence, Jenkins, Gmail connectors |
-| **Workflow Engine** | `workflows/` | Loads YAML workflows, executes action chains on events |
-| **Event Bus** | `events/` | In-process pub/sub with topic-based routing |
-| **Webhook Server** | `webhooks/` | FastAPI endpoints for GitHub, Jira, Jenkins, Slack |
-| **CLI** | `cli/` | Rich-powered interactive chat interface |
-| **Security** | `security/` | Secret loading, log redaction, webhook signature validation |
-| **Database** | `database/` | SQLAlchemy models — events, workflow runs, summaries, tool outputs |
+The registry supports: `register_tool()`, `get_all_tools()`, `execute_tool()`.
 
 ---
 
@@ -98,7 +181,7 @@ python main.py run
 | Tool | Description |
 |------|-------------|
 | `slack.send_message` | Post a message to a channel |
-| `slack.read_channel_history` | Read recent channel messages |
+| `slack.read_channel` | Read recent channel messages |
 
 **Required env vars:** `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`
 
@@ -107,10 +190,9 @@ python main.py run
 | Tool | Description |
 |------|-------------|
 | `github.create_issue` | Create an issue |
-| `github.summarize_pull_request` | Get PR details |
-| `github.comment_on_pr` | Comment on a PR |
+| `github.summarize_pr` | Summarize a pull request |
+| `github.comment_pr` | Comment on a PR |
 | `github.create_branch` | Create a branch |
-| `github.get_repo_activity` | Recent commits, PRs, issues |
 
 **Required env vars:** `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`
 
@@ -120,8 +202,7 @@ python main.py run
 |------|-------------|
 | `jira.create_ticket` | Create a ticket |
 | `jira.update_ticket` | Update ticket fields |
-| `jira.link_github_issue` | Add GitHub remote link |
-| `jira.get_ticket_details` | Get ticket details |
+| `jira.get_issue` | Get issue details |
 
 **Required env vars:** `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN`
 
@@ -140,8 +221,7 @@ python main.py run
 | Tool | Description |
 |------|-------------|
 | `jenkins.trigger_build` | Trigger a build |
-| `jenkins.get_build_status` | Get build status |
-| `jenkins.fetch_build_logs` | Get console output |
+| `jenkins.fetch_logs` | Get console output |
 
 **Required env vars:** `JENKINS_URL`, `JENKINS_USER`, `JENKINS_API_TOKEN`
 
@@ -149,12 +229,25 @@ python main.py run
 
 | Tool | Description |
 |------|-------------|
-| `gmail.read_emails` | Search and read emails |
-| `gmail.summarize_thread` | Get thread messages |
+| `gmail.read_thread` | Read and summarize a thread |
 | `gmail.send_email` | Send an email |
-| `gmail.extract_action_items` | Extract text for LLM processing |
 
 **Required:** `credentials.json` (OAuth client) and completing the OAuth flow to generate `token.json`.
+
+---
+
+## Event System
+
+Events originate from webhooks, Slack commands, and scheduled jobs:
+
+| Event | Source |
+|-------|--------|
+| `github.pull_request.opened` | GitHub webhook |
+| `jira.issue.created` | Jira webhook |
+| `jenkins.build.failed` | Jenkins webhook |
+| `slack.command.invoked` | Slack command |
+
+Events are stored in PostgreSQL and dispatched to subscribed workflow handlers.
 
 ---
 
@@ -178,22 +271,6 @@ actions:
     description: Link the PR to the related Jira ticket
 ```
 
-### Example: Build Failed
-
-```yaml
-name: build_failed_workflow
-trigger: jenkins.build.failed
-actions:
-  - tool: jenkins.fetch_build_logs
-    description: Fetch the failed build logs
-  - tool: agent.summarize
-    description: Summarize the failure using LLM
-  - tool: slack.send_message
-    description: Post failure summary to Slack
-    args:
-      channel: "#build-alerts"
-```
-
 ### Adding a new workflow
 
 1. Create a `.yaml` file in `workflows/`
@@ -205,7 +282,7 @@ actions:
 
 ## Webhook Server
 
-The webhook server runs on `http://localhost:8080` by default.
+Runs on `http://localhost:8080` by default.
 
 | Endpoint | Source |
 |----------|--------|
@@ -220,15 +297,16 @@ All endpoints validate webhook signatures when the corresponding secret is confi
 
 ---
 
-## LLM Configuration
+## Database (PostgreSQL)
 
-The agent supports three LLM providers via the OpenClaw abstraction:
+| Table | Contents |
+|-------|----------|
+| `events` | All incoming events with type, source, payload |
+| `workflow_runs` | Workflow execution records with status and results |
+| `tool_results` | Inputs and outputs of every tool call |
+| `agent_memory` | Persistent agent conversation memory |
 
-| Provider | `OPENCLAW_PROVIDER` | Notes |
-|----------|---------------------|-------|
-| OpenRouter | `openrouter` | Default. Supports many models. |
-| OpenAI | `openai` | Direct OpenAI API. |
-| Ollama | `ollama` | Local models. Set `OPENCLAW_BASE_URL` if non-default. |
+Connection configured via `DATABASE_URL` env var. Uses SQLAlchemy + psycopg2.
 
 ---
 
@@ -238,22 +316,18 @@ The agent supports three LLM providers via the OpenClaw abstraction:
 - Webhook endpoints validate HMAC signatures.
 - Logs are filtered to redact tokens and API keys.
 - `.env` and credential files are `.gitignore`d.
-- Each integration uses the minimum required scopes.
+- Each integration uses minimum required scopes / least privilege tokens.
 
 ---
 
-## Database
+## Testing
 
-SQLite stores all operational data locally:
+```bash
+pip install pytest pytest-asyncio
+python -m pytest tests/ -v
+```
 
-| Table | Contents |
-|-------|----------|
-| `events` | All incoming events with type, source, payload |
-| `workflow_runs` | Workflow execution records with status and results |
-| `cached_summaries` | LLM-generated summaries keyed for reuse |
-| `tool_outputs` | Inputs and outputs of every tool call |
-
-Default location: `data/agent.db`
+130 tests covering: security, database models, event bus, IronClaw client, orchestrator, tool schema registry, all 6 integrations, workflow engine, webhook server, and CLI.
 
 ---
 
@@ -264,9 +338,7 @@ pip install pyinstaller
 pyinstaller --onefile main.py --name claw-agent
 ```
 
-The output binary will be in `dist/claw-agent.exe`.
-
-### Usage after build
+Output: `dist/claw-agent.exe`
 
 ```bash
 claw-agent.exe chat
@@ -279,11 +351,14 @@ claw-agent.exe webhook-server
 ## Project Structure
 
 ```
-developer-agent/
+ironclaw-developer-agent/
 ├── agent/
-│   ├── orchestrator.py      # LLM client, tool registry, main orchestrator
-│   ├── planner.py           # Action plan decomposition
-│   └── memory.py            # Conversation history
+│   ├── orchestrator.py         # Main orchestrator — coordinates IronClaw + tools
+│   ├── ironclaw_client.py      # HTTP client for IronClaw runtime
+│   ├── planner.py              # Action plan decomposition via IronClaw
+│   └── memory.py               # Conversation history with PostgreSQL persistence
+├── tools/
+│   └── registry.py             # Tool Schema Registry with JSON schema support
 ├── integrations/
 │   ├── slack.py
 │   ├── github_integration.py
@@ -292,28 +367,30 @@ developer-agent/
 │   ├── jenkins.py
 │   └── gmail.py
 ├── workflows/
-│   ├── engine.py            # Workflow execution engine
-│   ├── loader.py            # YAML workflow parser
+│   ├── engine.py               # Workflow execution engine
+│   ├── loader.py               # YAML workflow parser
 │   ├── pr_opened.yaml
 │   ├── build_failed.yaml
 │   └── jira_created.yaml
 ├── events/
-│   ├── bus.py               # Async event bus
-│   └── types.py             # Event models
+│   ├── bus.py                  # Async event bus with PostgreSQL persistence
+│   └── types.py                # Event models and source enum
 ├── webhooks/
-│   └── server.py            # FastAPI webhook endpoints
+│   └── server.py               # FastAPI webhook endpoints
 ├── security/
-│   └── secrets.py           # Credential loading, redaction, signature validation
+│   └── secrets.py              # Credential loading, redaction, HMAC validation
 ├── database/
-│   └── models.py            # SQLAlchemy models and session management
+│   ├── postgres.py             # PostgreSQL engine, session, connection management
+│   └── models.py               # SQLAlchemy ORM models
 ├── cli/
-│   └── chat.py              # Interactive chat interface
+│   └── chat.py                 # Interactive chat interface (Rich)
 ├── config/
 │   └── config.yaml
+├── tests/                      # 130 tests
 ├── logs/
 ├── .env.example
 ├── .gitignore
 ├── requirements.txt
-├── main.py                  # Entry point and CLI commands
+├── main.py                     # Entry point and CLI commands
 └── README.md
 ```

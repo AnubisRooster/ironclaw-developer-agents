@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database.models import Base, CachedSummary, Event, ToolOutput, WorkflowRun
+from database.models import AgentMemory, Base, Event, ToolResult, WorkflowRun
 
 
 @pytest.fixture
@@ -64,26 +64,9 @@ class TestWorkflowRunModel:
         assert db_session.query(WorkflowRun).first().status == "pending"
 
 
-class TestCachedSummaryModel:
-    def test_create_summary(self, db_session):
-        summary = CachedSummary(key="pr:123", summary="This PR adds feature X")
-        db_session.add(summary)
-        db_session.commit()
-
-        result = db_session.query(CachedSummary).filter_by(key="pr:123").first()
-        assert result.summary == "This PR adds feature X"
-
-    def test_unique_key_constraint(self, db_session):
-        db_session.add(CachedSummary(key="unique-key", summary="first"))
-        db_session.commit()
-        db_session.add(CachedSummary(key="unique-key", summary="second"))
-        with pytest.raises(Exception):
-            db_session.commit()
-
-
-class TestToolOutputModel:
-    def test_create_tool_output(self, db_session):
-        output = ToolOutput(
+class TestToolResultModel:
+    def test_create_tool_result(self, db_session):
+        output = ToolResult(
             tool_name="slack.send_message",
             input_data='{"channel": "#test"}',
             output_data='{"ok": true}',
@@ -91,15 +74,39 @@ class TestToolOutputModel:
         db_session.add(output)
         db_session.commit()
 
-        result = db_session.query(ToolOutput).first()
+        result = db_session.query(ToolResult).first()
         assert result.tool_name == "slack.send_message"
         assert result.input_data == '{"channel": "#test"}'
         assert result.output_data == '{"ok": true}'
 
     def test_defaults(self, db_session):
-        output = ToolOutput(tool_name="test.tool")
+        output = ToolResult(tool_name="test.tool")
         db_session.add(output)
         db_session.commit()
-        result = db_session.query(ToolOutput).first()
+        result = db_session.query(ToolResult).first()
         assert result.input_data == ""
         assert result.output_data == ""
+
+
+class TestAgentMemoryModel:
+    def test_create_memory(self, db_session):
+        mem = AgentMemory(session_id="sess123", role="user", content="hello world")
+        db_session.add(mem)
+        db_session.commit()
+
+        result = db_session.query(AgentMemory).first()
+        assert result.session_id == "sess123"
+        assert result.role == "user"
+        assert result.content == "hello world"
+
+    def test_multiple_messages_same_session(self, db_session):
+        for i in range(3):
+            db_session.add(AgentMemory(session_id="s1", role="user", content=f"msg {i}"))
+        db_session.commit()
+        assert db_session.query(AgentMemory).filter_by(session_id="s1").count() == 3
+
+    def test_multiple_sessions(self, db_session):
+        db_session.add(AgentMemory(session_id="s1", role="user", content="a"))
+        db_session.add(AgentMemory(session_id="s2", role="user", content="b"))
+        db_session.commit()
+        assert db_session.query(AgentMemory).count() == 2

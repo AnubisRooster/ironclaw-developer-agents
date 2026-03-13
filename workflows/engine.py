@@ -5,11 +5,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from database.models import WorkflowRun, get_session
+from database.postgres import session_scope
+from database.models import WorkflowRun
 from events.bus import EventBus, event_bus
 from events.types import AgentEvent
+from tools.registry import ToolSchemaRegistry
 from workflows.loader import WorkflowDefinition, load_all_workflows
 
 logger = logging.getLogger("claw-agent.workflows")
@@ -22,11 +24,16 @@ class WorkflowEngine:
         self,
         bus: EventBus | None = None,
         workflow_dir: str = "workflows",
+        registry: ToolSchemaRegistry | None = None,
     ) -> None:
         self._bus = bus or event_bus
+        self._registry = registry or ToolSchemaRegistry()
         self._workflows: Dict[str, WorkflowDefinition] = {}
-        self._tool_registry: Dict[str, Any] = {}
         self._workflow_dir = workflow_dir
+
+    @property
+    def registry(self) -> ToolSchemaRegistry:
+        return self._registry
 
     def load(self) -> None:
         """Load workflow definitions and subscribe triggers to the event bus."""
@@ -36,10 +43,6 @@ class WorkflowEngine:
         logger.info(
             "WorkflowEngine ready — %d workflow(s) registered", len(self._workflows)
         )
-
-    def register_tool(self, name: str, func: Any) -> None:
-        """Register an executable tool that workflows can invoke."""
-        self._tool_registry[name] = func
 
     async def _handle_event(self, event: AgentEvent) -> None:
         """Dispatch a matching workflow when an event fires."""
@@ -59,9 +62,10 @@ class WorkflowEngine:
             trigger_event=event.event_type,
             status="running",
         )
-        session = get_session()
-        session.add(run)
-        session.commit()
+        with session_scope() as session:
+            session.add(run)
+            session.flush()
+            run_id = run.id
 
         results: list[Dict[str, Any]] = []
         status = "completed"
@@ -70,23 +74,18 @@ class WorkflowEngine:
             step_label = f"[{wf.name} step {i + 1}/{len(wf.actions)}] {action.description or action.tool}"
             logger.info("Executing %s", step_label)
 
-            tool_func = self._tool_registry.get(action.tool)
-            if not tool_func:
+            merged_args = {**action.args, **event.payload}
+            try:
+                result = await self._registry.execute_tool(action.tool, merged_args)
+                results.append({"step": i + 1, "tool": action.tool, "result": result})
+                logger.info("Step %d succeeded: %s", i + 1, action.tool)
+            except KeyError:
                 logger.error("Tool not found: %s", action.tool)
                 results.append({"step": i + 1, "tool": action.tool, "error": "tool_not_found"})
                 if action.on_failure == "stop":
                     status = "failed"
                     break
                 continue
-
-            merged_args = {**action.args, **event.payload}
-            try:
-                if _is_coroutine(tool_func):
-                    result = await tool_func(**merged_args)
-                else:
-                    result = tool_func(**merged_args)
-                results.append({"step": i + 1, "tool": action.tool, "result": result})
-                logger.info("Step %d succeeded: %s", i + 1, action.tool)
             except Exception as exc:
                 logger.exception("Step %d failed: %s", i + 1, action.tool)
                 results.append({"step": i + 1, "tool": action.tool, "error": str(exc)})
@@ -94,17 +93,12 @@ class WorkflowEngine:
                     status = "failed"
                     break
 
-        run.status = status
-        run.result = json.dumps(results, default=str)
-        run.finished_at = dt.datetime.now(dt.timezone.utc)
-        session.merge(run)
-        session.commit()
-        session.close()
+        with session_scope() as session:
+            run = session.get(WorkflowRun, run_id)
+            if run:
+                run.status = status
+                run.result = json.dumps(results, default=str)
+                run.finished_at = dt.datetime.now(dt.timezone.utc)
 
         logger.info("Workflow %s finished with status: %s", wf.name, status)
         return {"workflow": wf.name, "status": status, "results": results}
-
-
-def _is_coroutine(func: Any) -> bool:
-    import asyncio
-    return asyncio.iscoroutinefunction(func)
