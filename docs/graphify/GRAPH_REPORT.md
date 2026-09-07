@@ -1,7 +1,8 @@
-# Graph Report - ironclaw-developer-agents  (2026-09-06)
+# Graph Report - ironclaw-developer-agents  (2026-09-07)
 
 ## Corpus Check
-- Corpus is ~27,468 words - fits in a single context window. You may not need a graph.
+- 59 files · ~101,864 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
 - 538 nodes · 956 edges · 35 communities (22 shown, 3 thin omitted)
