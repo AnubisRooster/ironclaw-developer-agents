@@ -1,39 +1,38 @@
-# Graph Report - ironclaw-developer-agents  (2026-09-07)
+# Graph Report - ironclaw-developer-agents  (2026-09-14)
 
 ## Corpus Check
-- 59 files · ~101,864 words
+- 59 files · ~101,863 words
 - Verdict: corpus is large enough that graph structure adds value.
+- Unclassified: 5 file(s) not represented in the graph (top: (none) 2, .example 1, .jsonl 1)
 
 ## Summary
-- 538 nodes · 956 edges · 35 communities (22 shown, 3 thin omitted)
+- 539 nodes · 956 edges · 33 communities (18 shown, 5 thin omitted)
 - Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 67 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- get_secrets()
-- test_database.py
+- AgentEvent
+- EventBus
 - ToolSchemaRegistry
 - IronClawClient
-- test_agent.py
+- get_secrets()
 - ConversationMemory
 - GmailIntegration
-- cli()
-- EventBus
-- GitHubIntegration
 - JiraIntegration
-- test_workflows.py
-- AgentEvent
 - test_webhooks.py
-- test_integrations.py
+- redact()
+- GitHubIntegration
 - main.py
-- load_all_workflows()
+- cli()
 - ConfluenceIntegration
+- SlackIntegration
+- test_cli_main.py
 - JenkinsIntegration
 - conftest.py
-- TestJenkinsIntegration
 - fixture
-- .subscribe()
-- .run_workflow()
+- TestJenkinsIntegration
+- test_integrations.py
+- TestGitHubIntegration
 - graphify_pipeline.py
 
 ## God Nodes (most connected - your core abstractions)
@@ -53,117 +52,101 @@
   agent/memory.py → database/models.py
 - `Orchestrator` --uses--> `ToolResult`  [INFERRED]
   agent/orchestrator.py → database/models.py
-- `Orchestrator` --uses--> `ToolSchemaRegistry`  [INFERRED]
-  agent/orchestrator.py → tools/registry.py
 - `TestOrchestrator` --uses--> `Orchestrator`  [INFERRED]
   tests/test_agent.py → agent/orchestrator.py
-- `EventBus` --uses--> `Event`  [INFERRED]
-  events/bus.py → database/models.py
+- `WorkflowEngine` --uses--> `WorkflowRun`  [INFERRED]
+  workflows/engine.py → database/models.py
+- `TestEventBus` --uses--> `EventBus`  [INFERRED]
+  tests/test_events.py → events/bus.py
 
 ## Import Cycles
 - None detected.
 
-## Communities (35 total, 3 thin omitted)
+## Communities (33 total, 5 thin omitted)
 
-### Community 0 - "get_secrets()"
+### Community 0 - "AgentEvent"
 Cohesion: 0.06
-Nodes (35): BaseSettings, Enum, EventSource, get, Initialize Confluence client with url, username, and api_token from secrets., Jenkins integration using python-jenkins., Initialize Jenkins client with url, username, and password from secrets., Slack integration using slack_sdk WebClient. (+27 more)
+Nodes (33): AgentEvent, BaseModel, Canonical event that flows through the internal bus., Path, asyncio, fixture, Tests for events/types.py and events/bus.py., TestAgentEvent (+25 more)
 
-### Community 1 - "test_database.py"
-Cohesion: 0.08
-Nodes (28): Conversation memory module with optional PostgreSQL persistence., Load history from the ``agent_memory`` PostgreSQL table for this session., AgentMemory, Base, Event, SQLAlchemy ORM models for PostgreSQL. Tables: events — all incoming events…, ToolResult, WorkflowRun (+20 more)
+### Community 1 - "EventBus"
+Cohesion: 0.06
+Nodes (41): Conversation memory module with optional PostgreSQL persistence., Write current history to the ``agent_memory`` PostgreSQL table., Agent orchestrator — the central coordinator of the Developer Automation Agent.…, AgentMemory, Base, Event, SQLAlchemy ORM models for PostgreSQL. Tables: events — all incoming events…, ToolResult (+33 more)
 
 ### Community 2 - "ToolSchemaRegistry"
-Cohesion: 0.08
-Nodes (19): asyncio, Tests for tools/registry.py — Tool Schema Registry., TestToolSchema, TestToolSchemaRegistry, Any, BaseModel, Tool Schema Registry — dynamic registration of tools with JSON schema…, Schema definition for a registered tool. (+11 more)
+Cohesion: 0.05
+Nodes (27): Orchestrator, Any, Execute a tool and persist the result. Args: tool_name: Name of the registered…, Delegate summarisation to IronClaw. Registered as the ``agent.summarize`` tool…, Main agent orchestrator: manages IronClaw, memory, and tool execution. The…, Convenience method to register a tool on the embedded registry., Process a user message through the IronClaw reasoning loop. 1. Add message to…, fixture (+19 more)
 
 ### Community 3 - "IronClawClient"
-Cohesion: 0.08
-Nodes (18): IronClawClient, Any, IronClaw client — communicates with the Rust-based OpenClaw runtime via HTTP.…, Ask IronClaw to summarise arbitrary content. Args: content: Raw text to…, Check IronClaw runtime health., HTTP client for the IronClaw (Rust OpenClaw) reasoning runtime. All reasoning —…, Send a chat request to IronClaw and return the full response. Args: messages:…, Ask IronClaw to decompose a request into an action plan. Args: user_request:… (+10 more)
+Cohesion: 0.07
+Nodes (24): IronClawClient, Any, Ask IronClaw to summarise arbitrary content. Args: content: Raw text to…, Check IronClaw runtime health., HTTP client for the IronClaw (Rust OpenClaw) reasoning runtime. All reasoning —…, Send a chat request to IronClaw and return the full response. Args: messages:…, Ask IronClaw to decompose a request into an action plan. Args: user_request:…, ActionPlan (+16 more)
 
-### Community 4 - "test_agent.py"
-Cohesion: 0.12
-Nodes (16): ActionPlan, Planner, PlanStep, Any, BaseModel, Workflow planning module — delegates plan creation to IronClaw., A single step in an action plan., Structured plan for executing a user request across multiple tool calls. (+8 more)
+### Community 4 - "get_secrets()"
+Cohesion: 0.08
+Nodes (31): IronClaw client — communicates with the Rust-based OpenClaw runtime via HTTP.…, BaseSettings, Enum, EventSource, Event type definitions for the internal event bus., get, Confluence integration using atlassian-python-api., GitHub integration using PyGithub. (+23 more)
 
 ### Community 5 - "ConversationMemory"
 Cohesion: 0.10
 Nodes (10): ConversationMemory, Any, Stores conversation history for the agent and provides context retrieval. In-…, Append a message to the conversation history. Args: role: Message role…, Return the most recent messages for context. Args: max_messages: Maximum number…, Return a one-line summary of the conversation., Clear all conversation history., Return messages in ``[{role, content}]`` format for IronClaw. (+2 more)
 
 ### Community 6 - "GmailIntegration"
-Cohesion: 0.12
-Nodes (13): GmailIntegration, Any, retry, Gmail integration using google-api-python-client., Get all messages in a thread. Args: thread_id: Gmail thread ID. Returns: Dict…, Send an email. Args: to: Recipient email address. subject: Email subject. body:…, Get thread content as raw text for LLM processing. Args: thread_id: Gmail…, Gmail integration for reading, sending, and summarizing emails. (+5 more)
+Cohesion: 0.13
+Nodes (12): GmailIntegration, Any, retry, Get all messages in a thread. Args: thread_id: Gmail thread ID. Returns: Dict…, Send an email. Args: to: Recipient email address. subject: Email subject. body:…, Get thread content as raw text for LLM processing. Args: thread_id: Gmail…, Gmail integration for reading, sending, and summarizing emails., Initialize Gmail API service using credentials from secrets. (+4 more)
 
-### Community 7 - "cli()"
-Cohesion: 0.10
-Nodes (14): _chat_loop(), _print_banner(), Interactive CLI chat interface for the developer automation agent., Run the interactive prompt loop., group, cli(), Configure structured logging with redaction filter., Claw Agent — Developer Automation Agent powered by IronClaw. (+6 more)
+### Community 7 - "JiraIntegration"
+Cohesion: 0.14
+Nodes (10): JiraIntegration, Any, retry, Get ticket details. Args: ticket_key: Jira issue key. Returns: Dict with key,…, Jira integration for tickets, updates, and remote links., Initialize Jira client with server URL and basic auth from secrets., Create a Jira ticket. Args: project: Project key. summary: Ticket…, Update ticket fields. Args: ticket_key: Jira issue key (e.g. PROJ-123).… (+2 more)
 
-### Community 8 - "EventBus"
-Cohesion: 0.12
-Nodes (14): PostgreSQL connection management using SQLAlchemy + psycopg2. Provides engine…, Context manager that commits on success and rolls back on error., session_scope(), EventBus, In-process async event bus with topic-based pub/sub and PostgreSQL persistence., Simple topic-based publish/subscribe event bus., Publish an event — persists to PostgreSQL and dispatches to subscribers., Write event to the PostgreSQL database. (+6 more)
-
-### Community 9 - "GitHubIntegration"
-Cohesion: 0.12
-Nodes (12): GitHubIntegration, Any, retry, GitHub integration using PyGithub., Create a new branch from an existing branch. Args: repo: Repository in…, Get recent commits, PRs, and issues from the last N days. Args: repo:…, GitHub integration for issues, PRs, branches, and repository activity., Initialize GitHub client with token from secrets. (+4 more)
-
-### Community 10 - "JiraIntegration"
-Cohesion: 0.12
-Nodes (11): JiraIntegration, Any, retry, Jira integration using the jira Python SDK., Get ticket details. Args: ticket_key: Jira issue key. Returns: Dict with key,…, Jira integration for tickets, updates, and remote links., Initialize Jira client with server URL and basic auth from secrets., Create a Jira ticket. Args: project: Project key. summary: Ticket… (+3 more)
-
-### Community 11 - "test_workflows.py"
-Cohesion: 0.20
-Nodes (11): asyncio, Tests for workflows/loader.py and workflows/engine.py., TestWorkflowAction, TestWorkflowDefinition, TestWorkflowEngine, BaseModel, Load and validate YAML workflow definitions., A single step inside a workflow. (+3 more)
-
-### Community 12 - "AgentEvent"
-Cohesion: 0.20
-Nodes (7): AgentEvent, BaseModel, Canonical event that flows through the internal bus., asyncio, Tests for events/types.py and events/bus.py., TestAgentEvent, TestEventBus
-
-### Community 13 - "test_webhooks.py"
+### Community 8 - "test_webhooks.py"
 Cohesion: 0.11
 Nodes (8): client(), fixture, Tests for webhooks/server.py — FastAPI endpoint validation., TestGitHubWebhook, TestHealthEndpoint, TestJenkinsWebhook, TestJiraWebhook, TestSlackWebhook
 
-### Community 14 - "test_integrations.py"
-Cohesion: 0.16
-Nodes (9): Any, retry, Slack integration for messaging and channel history., Post a message to a Slack channel. Args: channel: Channel ID or name (e.g.…, Respond to a slash command via response_url. Args: response_url: The…, Read recent messages from a Slack channel. Args: channel: Channel ID (e.g.…, SlackIntegration, Tests for all integration connectors. (+1 more)
+### Community 9 - "redact()"
+Cohesion: 0.18
+Nodes (7): LogRecord, Logging filter that scrubs sensitive patterns from log records., Replace known secret patterns with <REDACTED>., redact(), RedactingFilter, TestRedact, TestRedactingFilter
 
-### Community 15 - "main.py"
-Cohesion: 0.20
-Nodes (15): Entry point called from main.py for the 'chat' command., start_chat(), command, _build_orchestrator(), chat(), Developer Automation Agent — main entry point. CLI commands: claw-agent chat —…, Wire the workflow engine to the event bus with orchestrator tools., Start an interactive chat session with the agent. (+7 more)
+### Community 10 - "GitHubIntegration"
+Cohesion: 0.19
+Nodes (10): GitHubIntegration, Any, retry, Create a new branch from an existing branch. Args: repo: Repository in…, Get recent commits, PRs, and issues from the last N days. Args: repo:…, GitHub integration for issues, PRs, branches, and repository activity., Initialize GitHub client with token from secrets., Create a GitHub issue. Args: repo: Repository in owner/name format. title:… (+2 more)
 
-### Community 16 - "load_all_workflows()"
-Cohesion: 0.17
-Nodes (8): Path, TestLoadAllWorkflows, TestLoadWorkflow, Load workflow definitions and subscribe triggers to the event bus., load_all_workflows(), load_workflow(), Parse a single YAML workflow file into a WorkflowDefinition., Scan a directory for .yaml workflow files and load them all.
+### Community 11 - "main.py"
+Cohesion: 0.21
+Nodes (13): command, _build_orchestrator(), chat(), Developer Automation Agent — main entry point. CLI commands: claw-agent chat —…, Wire the workflow engine to the event bus with orchestrator tools., Start an interactive chat session with the agent., Start the webhook server in the foreground., Start the agent daemon (webhook server + workflow engine). (+5 more)
 
-### Community 17 - "ConfluenceIntegration"
-Cohesion: 0.20
-Nodes (10): ConfluenceIntegration, Any, retry, Confluence integration using atlassian-python-api., Create a Confluence page. Args: space: Space key. title: Page title. body: Page…, Remove HTML tags and decode entities., Confluence integration for search, pages, and content., CQL search for Confluence documents. Args: query: CQL search query. limit:… (+2 more)
+### Community 12 - "cli()"
+Cohesion: 0.18
+Nodes (8): group, cli(), Configure structured logging with redaction filter., Claw Agent — Developer Automation Agent powered by IronClaw., _setup_logging(), pass_context, fixture, TestMainCLI
 
-### Community 18 - "JenkinsIntegration"
-Cohesion: 0.29
-Nodes (7): JenkinsIntegration, Any, retry, Get console output (last 5000 chars) for a build. Args: job_name: Name of the…, Jenkins integration for triggering builds and fetching status/logs., Trigger a Jenkins build. Args: job_name: Name of the job to build. parameters:…, Get status of latest or specific build. Args: job_name: Name of the job.…
+### Community 13 - "ConfluenceIntegration"
+Cohesion: 0.19
+Nodes (10): ConfluenceIntegration, Any, retry, Create a Confluence page. Args: space: Space key. title: Page title. body: Page…, Remove HTML tags and decode entities., Confluence integration for search, pages, and content., Initialize Confluence client with url, username, and api_token from secrets., CQL search for Confluence documents. Args: query: CQL search query. limit:… (+2 more)
 
-### Community 19 - "conftest.py"
+### Community 14 - "SlackIntegration"
+Cohesion: 0.21
+Nodes (8): Any, retry, Slack integration for messaging and channel history., Initialize Slack WebClient with token from secrets., Post a message to a Slack channel. Args: channel: Channel ID or name (e.g.…, Respond to a slash command via response_url. Args: response_url: The…, Read recent messages from a Slack channel. Args: channel: Channel ID (e.g.…, SlackIntegration
+
+### Community 15 - "test_cli_main.py"
+Cohesion: 0.24
+Nodes (8): _chat_loop(), _print_banner(), Interactive CLI chat interface for the developer automation agent., Run the interactive prompt loop., Entry point called from main.py for the 'chat' command., start_chat(), Tests for cli/chat.py and main.py entry point., TestCLIChat
+
+### Community 16 - "JenkinsIntegration"
+Cohesion: 0.23
+Nodes (8): JenkinsIntegration, Any, retry, Get console output (last 5000 chars) for a build. Args: job_name: Name of the…, Jenkins integration for triggering builds and fetching status/logs., Initialize Jenkins client with url, username, and password from secrets., Trigger a Jenkins build. Args: job_name: Name of the job to build. parameters:…, Get status of latest or specific build. Args: job_name: Name of the job.…
+
+### Community 17 - "conftest.py"
 Cohesion: 0.28
 Nodes (8): env_secrets(), fixture, Shared fixtures for the test suite., Clear the lru_cache on get_secrets between tests so env changes take effect., Reset the database singletons between tests., Set a minimal .env-like set of secrets for testing., _reset_db_singletons(), _reset_secrets_cache()
 
-### Community 22 - ".subscribe()"
-Cohesion: 0.40
-Nodes (3): Register a handler for a specific event type., Register a handler that receives every event., Subscriber
-
-### Community 23 - ".run_workflow()"
-Cohesion: 0.40
-Nodes (3): Any, Dispatch a matching workflow when an event fires., Execute every action in a workflow sequentially.
-
 ## Knowledge Gaps
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `get_secrets()` connect `get_secrets()` to `test_database.py`, `IronClawClient`, `GmailIntegration`, `EventBus`, `GitHubIntegration`, `JiraIntegration`, `test_webhooks.py`, `main.py`, `ConfluenceIntegration`, `conftest.py`?**
-  _High betweenness centrality (0.212) - this node is a cross-community bridge._
-- **Why does `ToolSchemaRegistry` connect `ToolSchemaRegistry` to `test_workflows.py`, `EventBus`, `IronClawClient`, `main.py`?**
-  _High betweenness centrality (0.188) - this node is a cross-community bridge._
-- **Why does `Orchestrator` connect `IronClawClient` to `test_database.py`, `ToolSchemaRegistry`, `test_agent.py`, `ConversationMemory`, `main.py`?**
+- **Why does `get_secrets()` connect `get_secrets()` to `EventBus`, `IronClawClient`, `GmailIntegration`, `JiraIntegration`, `test_webhooks.py`, `GitHubIntegration`, `main.py`, `ConfluenceIntegration`, `SlackIntegration`, `JenkinsIntegration`, `conftest.py`?**
+  _High betweenness centrality (0.211) - this node is a cross-community bridge._
+- **Why does `ToolSchemaRegistry` connect `ToolSchemaRegistry` to `AgentEvent`, `EventBus`, `main.py`?**
+  _High betweenness centrality (0.190) - this node is a cross-community bridge._
+- **Why does `Orchestrator` connect `ToolSchemaRegistry` to `main.py`, `EventBus`, `IronClawClient`, `ConversationMemory`?**
   _High betweenness centrality (0.163) - this node is a cross-community bridge._
 - **Are the 9 inferred relationships involving `AgentEvent` (e.g. with `EventBus` and `TestAgentEvent`) actually correct?**
   _`AgentEvent` has 9 INFERRED edges - model-reasoned connections that need verification._
