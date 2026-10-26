@@ -1,39 +1,36 @@
-# Graph Report - ironclaw-developer-agents  (2026-10-19)
+# Graph Report - ironclaw-developer-agents  (2026-10-26)
 
 ## Corpus Check
-- 59 files · ~75,230 words
+- 59 files · ~76,699 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 5 file(s) not represented in the graph (top: (none) 2, .example 1, .jsonl 1)
 
 ## Summary
-- 595 nodes · 1208 edges · 35 communities (14 shown, 21 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 154 edges (avg confidence: 0.89)
+- 658 nodes · 1267 edges · 30 communities (15 shown, 15 thin omitted)
+- Extraction: 88% EXTRACTED · 12% INFERRED · 0% AMBIGUOUS · INFERRED: 154 edges (avg confidence: 0.89)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- get_secrets()
-- test_workflows.py
 - IronClawClient
+- secrets.py
 - ToolSchemaRegistry
-- AgentEvent
-- graphify_pipeline.py
-- ConversationMemory
-- test_integrations.py
-- test_agent.py
-- confluence.py
-- test_database.py
-- GitHubIntegration
-- JiraIntegration
 - main.py
-- test_cli_main.py
-- SlackIntegration
-- redact()
-- TestJenkinsIntegration
-- cli()
-- postgres.py
-- orchestrator.py
-- AgentMemory
+- get_secrets()
+- AgentEvent
+- test_integrations.py
+- test_workflows.py
+- integrations
+- ConversationMemory
+- test_database.py
+- GmailIntegration
+- graphify_pipeline.py
+- GitHubIntegration
 - JenkinsIntegration
+- JiraIntegration
+- redact()
+- build_failed.yaml
+- jira_created.yaml
+- pr_opened.yaml
 
 ## God Nodes (most connected - your core abstractions)
 1. `AgentEvent` - 35 edges
@@ -62,81 +59,85 @@
 ## Import Cycles
 - None detected.
 
-## Communities (35 total, 21 thin omitted)
+## Communities (30 total, 15 thin omitted)
 
-### Community 0 - "get_secrets()"
+### Community 0 - "IronClawClient"
 Cohesion: 0.06
-Nodes (17): EventSource, AppSecrets, get_secrets(), verify_webhook_signature(), TestAppSecrets, TestVerifyWebhookSignature, client(), TestGitHubWebhook (+9 more)
+Nodes (9): IronClawClient, Orchestrator, ActionPlan, Planner, PlanStep, TestIronClawClient, TestOrchestrator, TestPlanModels (+1 more)
 
-### Community 1 - "test_workflows.py"
-Cohesion: 0.08
-Nodes (10): TestLoadAllWorkflows, TestLoadWorkflow, TestWorkflowAction, TestWorkflowDefinition, TestWorkflowEngine, WorkflowEngine, load_all_workflows(), load_workflow() (+2 more)
+### Community 1 - "secrets.py"
+Cohesion: 0.05
+Nodes (6): check_connection(), get_engine(), get_session(), get_session_factory(), session_scope(), _strip_html()
 
-### Community 2 - "IronClawClient"
+### Community 2 - "ToolSchemaRegistry"
+Cohesion: 0.07
+Nodes (6): TestToolSchema, TestToolSchemaRegistry, RegisteredTool, ToolSchema, ToolSchemaRegistry, WorkflowEngine
+
+### Community 3 - "main.py"
+Cohesion: 0.06
+Nodes (12): _chat_loop(), _print_banner(), start_chat(), _build_orchestrator(), chat(), cli(), run(), _setup_logging() (+4 more)
+
+### Community 4 - "get_secrets()"
+Cohesion: 0.07
+Nodes (16): AppSecrets, get_secrets(), verify_webhook_signature(), TestAppSecrets, TestVerifyWebhookSignature, client(), TestGitHubWebhook, TestHealthEndpoint (+8 more)
+
+### Community 5 - "AgentEvent"
 Cohesion: 0.09
-Nodes (4): IronClawClient, Orchestrator, TestIronClawClient, TestOrchestrator
+Nodes (5): EventBus, AgentEvent, EventSource, TestAgentEvent, TestEventBus
 
-### Community 3 - "ToolSchemaRegistry"
-Cohesion: 0.10
-Nodes (5): TestToolSchema, TestToolSchemaRegistry, RegisteredTool, ToolSchema, ToolSchemaRegistry
-
-### Community 4 - "AgentEvent"
-Cohesion: 0.12
-Nodes (4): EventBus, AgentEvent, TestAgentEvent, TestEventBus
-
-### Community 5 - "graphify_pipeline.py"
+### Community 6 - "test_integrations.py"
 Cohesion: 0.08
-Nodes (3): env_secrets(), _reset_db_singletons(), _reset_secrets_cache()
+Nodes (4): ConfluenceIntegration, SlackIntegration, TestConfluenceIntegration, TestSlackIntegration
 
-### Community 8 - "test_agent.py"
-Cohesion: 0.16
-Nodes (5): ActionPlan, Planner, PlanStep, TestPlanModels, TestPlanner
+### Community 7 - "test_workflows.py"
+Cohesion: 0.11
+Nodes (9): TestLoadAllWorkflows, TestLoadWorkflow, TestWorkflowAction, TestWorkflowDefinition, TestWorkflowEngine, load_all_workflows(), load_workflow(), WorkflowAction (+1 more)
 
-### Community 9 - "confluence.py"
-Cohesion: 0.12
-Nodes (3): ConfluenceIntegration, _strip_html(), TestConfluenceIntegration
+### Community 8 - "integrations"
+Cohesion: 0.07
+Nodes (29): agent, log_file, log_level, name, version, enabled, database, url (+21 more)
 
 ### Community 10 - "test_database.py"
-Cohesion: 0.16
-Nodes (8): Base, Event, ToolResult, WorkflowRun, db_session(), TestEventModel, TestToolResultModel, TestWorkflowRunModel
+Cohesion: 0.14
+Nodes (10): AgentMemory, Base, Event, ToolResult, WorkflowRun, db_session(), TestAgentMemoryModel, TestEventModel (+2 more)
 
-### Community 13 - "main.py"
-Cohesion: 0.18
-Nodes (5): _build_orchestrator(), chat(), run(), _setup_workflow_engine(), webhook_server()
+### Community 12 - "graphify_pipeline.py"
+Cohesion: 0.10
+Nodes (3): env_secrets(), _reset_db_singletons(), _reset_secrets_cache()
 
-### Community 15 - "test_cli_main.py"
-Cohesion: 0.15
-Nodes (4): _chat_loop(), _print_banner(), start_chat(), TestCLIChat
-
-### Community 17 - "redact()"
+### Community 16 - "redact()"
 Cohesion: 0.20
 Nodes (4): redact(), RedactingFilter, TestRedact, TestRedactingFilter
 
-### Community 20 - "cli()"
+### Community 17 - "build_failed.yaml"
 Cohesion: 0.18
-Nodes (3): cli(), _setup_logging(), TestMainCLI
+Nodes (10): actions, args, description, on_failure, tool, channel, description, enabled (+2 more)
 
-### Community 21 - "postgres.py"
-Cohesion: 0.20
-Nodes (3): check_connection(), get_engine(), get_session_factory()
+### Community 18 - "jira_created.yaml"
+Cohesion: 0.18
+Nodes (10): actions, args, description, on_failure, tool, channel, description, enabled (+2 more)
+
+### Community 19 - "pr_opened.yaml"
+Cohesion: 0.18
+Nodes (10): actions, args, description, on_failure, tool, channel, description, enabled (+2 more)
 
 ## Knowledge Gaps
-- **21 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `ToolSchemaRegistry` connect `ToolSchemaRegistry` to `test_workflows.py`, `IronClawClient`, `main.py`, `typing`, `orchestrator.py`?**
-  _High betweenness centrality (0.126) - this node is a cross-community bridge._
+- **Why does `ToolSchemaRegistry` connect `ToolSchemaRegistry` to `IronClawClient`, `secrets.py`, `main.py`, `AgentEvent`, `test_workflows.py`?**
+  _High betweenness centrality (0.103) - this node is a cross-community bridge._
 - **Are the 9 inferred relationships involving `AgentEvent` (e.g. with `EventBus` and `TestAgentEvent`) actually correct?**
   _`AgentEvent` has 9 INFERRED edges - model-reasoned connections that need verification._
-- **Should `get_secrets()` be split into smaller, more focused modules?**
-  _Cohesion score 0.06110102843315184 - nodes in this community are weakly interconnected._
-- **Why does `get_secrets()` connect `get_secrets()` to `IronClawClient`, `graphify_pipeline.py`, `test_integrations.py`, `confluence.py`, `GitHubIntegration`, `JiraIntegration`, `main.py`, `typing`, `SlackIntegration`, `logging`, `postgres.py`, `JenkinsIntegration`?**
-  _High betweenness centrality (0.112) - this node is a cross-community bridge._
+- **Should `IronClawClient` be split into smaller, more focused modules?**
+  _Cohesion score 0.05913461538461538 - nodes in this community are weakly interconnected._
+- **Why does `get_secrets()` connect `get_secrets()` to `IronClawClient`, `secrets.py`, `main.py`, `test_integrations.py`, `GmailIntegration`, `graphify_pipeline.py`, `GitHubIntegration`, `JenkinsIntegration`, `JiraIntegration`?**
+  _High betweenness centrality (0.092) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `ToolSchemaRegistry` (e.g. with `Orchestrator` and `TestToolSchemaRegistry`) actually correct?**
   _`ToolSchemaRegistry` has 4 INFERRED edges - model-reasoned connections that need verification._
-- **Should `test_workflows.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.07568027210884354 - nodes in this community are weakly interconnected._
-- **Why does `Orchestrator` connect `IronClawClient` to `ToolSchemaRegistry`, `ConversationMemory`, `test_agent.py`, `test_database.py`, `main.py`, `orchestrator.py`?**
-  _High betweenness centrality (0.092) - this node is a cross-community bridge._
+- **Should `secrets.py` be split into smaller, more focused modules?**
+  _Cohesion score 0.051715309779825906 - nodes in this community are weakly interconnected._
+- **Why does `Orchestrator` connect `IronClawClient` to `secrets.py`, `ToolSchemaRegistry`, `main.py`, `ConversationMemory`, `test_database.py`?**
+  _High betweenness centrality (0.075) - this node is a cross-community bridge._
