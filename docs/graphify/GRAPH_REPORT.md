@@ -1,7 +1,7 @@
-# Graph Report - ironclaw-developer-agents  (2026-10-26)
+# Graph Report - ironclaw-developer-agents  (2026-11-02)
 
 ## Corpus Check
-- 59 files · ~76,699 words
+- 59 files · ~79,846 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 5 file(s) not represented in the graph (top: (none) 2, .example 1, .jsonl 1)
 
