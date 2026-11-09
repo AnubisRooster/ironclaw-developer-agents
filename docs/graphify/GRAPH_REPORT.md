@@ -1,4 +1,4 @@
-# Graph Report - ironclaw-developer-agents  (2026-11-02)
+# Graph Report - ironclaw-developer-agents  (2026-11-09)
 
 ## Corpus Check
 - 59 files · ~79,846 words
